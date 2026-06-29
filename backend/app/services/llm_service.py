@@ -7,10 +7,31 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
-# Absolute path to the Verilog Lark grammar file shipped alongside the backend.
-_VERILOG_GRAMMAR_PATH: str = os.path.join(
-    os.path.dirname(__file__), "..", "..", "verilog.lark"
+# Absolute, normalised path to the Verilog Lark grammar file.
+_VERILOG_GRAMMAR_PATH: str = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "verilog.lark")
 )
+
+
+def _read_verilog_grammar() -> str:
+    """
+    Read the Verilog Lark grammar file and return its content as a string.
+
+    Syncode's Grammar constructor accepts either a built-in name ('c', 'python')
+    or a raw Lark grammar string.  Passing the file content directly (instead of
+    a path) avoids any ambiguity about how Grammar() resolves file paths and works
+    regardless of the current working directory.
+
+    Raises FileNotFoundError if the grammar file is missing so the error surfaces
+    at startup rather than silently falling back to an unconstrained mode.
+    """
+    if not os.path.isfile(_VERILOG_GRAMMAR_PATH):
+        raise FileNotFoundError(
+            f"Verilog grammar file not found at: {_VERILOG_GRAMMAR_PATH}. "
+            "Make sure verilog.lark exists in the backend/ directory."
+        )
+    with open(_VERILOG_GRAMMAR_PATH, "r", encoding="utf-8") as fh:
+        return fh.read()
 
 import torch
 import torch.nn.functional as F
@@ -153,13 +174,15 @@ class _SyncodeConstraint:
         try:
             from syncode import Grammar, SyncodeLogitsProcessor  # noqa: PLC0415
 
+            grammar_content = _read_verilog_grammar()
             log.info(
                 "Initializing Syncode Verilog-grammar processor "
                 "(first run compiles DFA mask store — may take ~30 s). "
-                "Grammar path: %s",
+                "Grammar path: %s  content_len: %d chars",
                 grammar,
+                len(grammar_content),
             )
-            gram_obj = Grammar(grammar)
+            gram_obj = Grammar(grammar_content)
             self._processor = SyncodeLogitsProcessor(
                 grammar=gram_obj,
                 tokenizer=tokenizer,
@@ -1664,6 +1687,26 @@ class LLMService:
             skip_special_tokens=True,
             clean_up_tokenization_spaces=True,
         )
+
+        # ── Attach accept_sequences and constraint_applied from forensic log ─
+        # The forensic log records which Lark grammar terminals are valid at
+        # each parse state.  We attach them to the corresponding DecodingStep
+        # so the frontend can display "allowed grammar continuations" per step.
+        if effective_syncode and self._syncode is not None:
+            forensic_entries = self._syncode.forensic_log
+            # Build map: 0-based forensic step index → record (skip sentinels)
+            forensic_map: dict[int, dict] = {}
+            for entry in forensic_entries:
+                if entry.get("_sentinel"):
+                    continue
+                fidx = entry.get("step")
+                if isinstance(fidx, int) and fidx not in forensic_map:
+                    forensic_map[fidx] = entry
+            for i, step_obj in enumerate(steps):
+                fentry = forensic_map.get(i)
+                if fentry:
+                    step_obj.accept_sequences = fentry.get("accept_seqs", [])[:8]
+                step_obj.constraint_applied = step_obj.syncode_active
 
         # ── Write debug trace ────────────────────────────────────────────────
         n_steps = len(_trace_steps)

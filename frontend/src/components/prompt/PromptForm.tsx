@@ -22,7 +22,69 @@ interface Props {
   error: string | null;
 }
 
-const DEFAULT_PROMPT = `Write a Verilog module that implements a 2-to-1 multiplexer with inputs a, b, sel and output y.`;
+// ---------------------------------------------------------------------------
+// Preset prompts
+// ---------------------------------------------------------------------------
+
+const PRESETS: { label: string; prompt: string }[] = [
+  {
+    label: "Mux 2-to-1 (basic)",
+    prompt: "Write a Verilog module that implements a 2-to-1 multiplexer with inputs a, b, sel and output y.",
+  },
+  {
+    label: "Mux rewrite (strict)",
+    prompt: `Generate only one Verilog module.
+The output must start with:
+module mux_cell(a, b, select, out);
+Do not use mux2, sel, or y anywhere in the rewritten code.
+Use select as the mux select signal.
+Use out as the output signal.
+Use only input, output, assign, and ternary operator.
+Do not use always, reg, if, case, vectors, or arithmetic.
+
+Original code:
+module mux2(a, b, sel, y);
+  input a, b, sel;
+  output y;
+
+  assign y = sel ? b : a;
+endmodule
+
+Expected output:
+module mux_cell(a, b, select, out);
+  input a, b, select;
+  output out;
+
+  assign out = select ? b : a;
+endmodule`,
+  },
+  {
+    label: "Full adder (grammar-valid)",
+    prompt: `Generate only this Verilog module, no explanation, no markdown:
+
+module fa_cell(a, b, carry_in, sum, carry_out);
+  input a, b, carry_in;
+  output sum, carry_out;
+
+  assign sum = a ^ b ^ carry_in;
+  assign carry_out = (a & b) | (b & carry_in) | (a & carry_in);
+endmodule`,
+  },
+  {
+    label: "Full adder (open)",
+    prompt: "Write a Verilog module that implements a 1-bit full adder with inputs a, b, cin and outputs sum, cout.",
+  },
+  {
+    label: "AND gate",
+    prompt: "Write a Verilog module that implements a 2-input AND gate with inputs a, b and output y.",
+  },
+  {
+    label: "D flip-flop",
+    prompt: "Write a Verilog module that implements a D flip-flop using only assign and wire statements.",
+  },
+];
+
+const DEFAULT_PROMPT = PRESETS[0].prompt;
 
 export function PromptForm({ onSubmit, isLoading, error }: Props) {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
@@ -41,6 +103,30 @@ export function PromptForm({ onSubmit, isLoading, error }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Preset selector */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium uppercase tracking-wider text-[#8b949e]">
+          Presets
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {PRESETS.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              disabled={isLoading}
+              onClick={() => setPrompt(p.prompt)}
+              className={`rounded border px-2 py-0.5 text-[11px] transition-colors disabled:opacity-40 ${
+                prompt === p.prompt
+                  ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
+                  : "border-surface-border text-[#8b949e] hover:border-accent-blue/50 hover:text-[#e6edf3]"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Prompt */}
       <div className="flex flex-col gap-1.5">
         <label
@@ -53,16 +139,15 @@ export function PromptForm({ onSubmit, isLoading, error }: Props) {
           id="prompt"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          rows={4}
+          rows={5}
           disabled={isLoading}
-          placeholder="Enter a prompt…"
+          placeholder="Enter a Verilog prompt…"
           className="code-block w-full resize-y rounded-md border border-surface-border bg-surface p-3 text-[#e6edf3] placeholder-[#484f58] focus:border-accent-blue focus:outline-none focus:ring-1 focus:ring-accent-blue disabled:opacity-50"
         />
       </div>
 
-      {/* Syncode toggle — now functional */}
+      {/* Syncode toggle */}
       <label className="flex cursor-pointer items-center gap-3 rounded-md border border-surface-border bg-surface px-3 py-2 transition-colors hover:border-[#30363d]">
-        {/* Custom toggle track */}
         <div className="relative shrink-0" onClick={() => !isLoading && setUseSyncode((v) => !v)}>
           <div
             className={`h-5 w-9 rounded-full transition-colors ${
@@ -82,7 +167,7 @@ export function PromptForm({ onSubmit, isLoading, error }: Props) {
           <span className="text-[10px] text-[#484f58]">
             {useSyncode
               ? "Grammar masking active — invalid Verilog tokens will be suppressed"
-              : "Off — raw greedy decoding, no grammar constraint"}
+              : "Off — raw nucleus sampling, no grammar constraint"}
           </span>
         </div>
         {useSyncode && (

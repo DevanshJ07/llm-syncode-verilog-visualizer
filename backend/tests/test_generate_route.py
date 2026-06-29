@@ -71,11 +71,16 @@ def test_generate_returns_500_on_validation_error(client):
     assert r.json()["detail"]["error"] == "generation_failed"
 
 
-def test_generate_returns_201_on_success(client):
+def test_generate_returns_200_on_success(client):
+    valid_verilog = """module m(a, y);
+  input a;
+  output y;
+  assign y = a;
+endmodule"""
     with patch(
         "app.api.routes.generate.llm_service.generate",
         new_callable=AsyncMock,
-        return_value=("hello", [_step()]),
+        return_value=(valid_verilog, [_step()]),
     ):
         r = client.post(
             "/generate",
@@ -87,8 +92,41 @@ def test_generate_returns_201_on_success(client):
                 "temperature": 1.0,
             },
         )
-    assert r.status_code == 201, r.text
+    assert r.status_code == 200, r.text
     body = r.json()
     assert body["total_steps"] == 1
     assert len(body["steps"]) == 1
-    assert body["generated_text"] == "hello"
+    assert "module m" in body["generated_text"]
+    assert body["final_parse_valid"] is True
+
+
+def test_generate_returns_200_with_invalid_verilog_flagged(client):
+    invalid = """module bad(a, y);
+  input wire a;
+  output reg y;
+  always @(*) y = a;
+endmodule"""
+    with patch(
+        "app.api.routes.generate.llm_service.generate",
+        new_callable=AsyncMock,
+        return_value=(invalid, [_step()]),
+    ), patch(
+        "app.api.routes.generate.llm_service._syncode",
+        available=True,
+    ):
+        r = client.post(
+            "/generate",
+            json={
+                "prompt": "test",
+                "use_syncode": True,
+                "max_new_tokens": 4,
+                "top_k": 5,
+                "temperature": 1.0,
+            },
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["final_parse_valid"] is False
+    assert len(body["unsupported_constructs_detected"]) > 0
+    assert body["constraint_applied"] is False
+    assert body["mode"] == "syncode"

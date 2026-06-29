@@ -74,8 +74,8 @@ interface ComparePanelProps {
 export function ComparePanel({ raw, syncode }: ComparePanelProps) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
-      <PanelHalf label="Raw LLaMA" experiment={raw} />
-      <PanelHalf label="Syncode Constrained" experiment={syncode} />
+      <PanelHalf label="Raw (unconstrained)" experiment={raw} />
+      <PanelHalf label="SynCode Verilog constrained" experiment={syncode} />
     </div>
   );
 }

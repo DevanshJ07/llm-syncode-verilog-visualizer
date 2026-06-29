@@ -50,9 +50,11 @@ export interface DecodingStep {
   entropy_before: number | null;
 
   // --- Syncode fields ---
+  /** Raw top-k BEFORE Syncode masking (with is_masked annotation). */
   top_tokens_before_syncode: TokenCandidate[];
   /** Rejected tokens with their raw probabilities (Syncode mode only). */
   masked_tokens: MaskedTokenEntry[];
+  /** Top-k from the constrained (post-mask) distribution. */
   valid_tokens_after_syncode: TokenCandidate[];
   entropy_after: number | null;
   num_masked: number;
@@ -64,6 +66,12 @@ export interface DecodingStep {
   masked_percentage: number;
   probability_mass_removed: number;
 
+  // --- Grammar forensics ---
+  /** Lark terminal names / grammar symbols valid at this parse state. */
+  accept_sequences: string[];
+  /** True when grammar masking was applied and changed at least one logit. */
+  constraint_applied: boolean;
+
   // --- Parser recovery metadata ---
   /** True when the Syncode grammar parser threw at this step. */
   parser_error: boolean;
@@ -71,6 +79,19 @@ export interface DecodingStep {
   parser_error_message: string;
   /** True when raw logits were used because Syncode masking failed/was unavailable. */
   fallback_used: boolean;
+
+  // --- Pipeline integrity diagnostics ---
+  syncode_active: boolean;
+  logits_diverge: boolean;
+  raw_argmax_token_id: number;
+  raw_argmax_token: string;
+  constrained_argmax_token_id: number;
+  constrained_argmax_token: string;
+  selection_source: string;
+  grammar_masked_count: number;
+  whitespace_tokens_masked: boolean;
+  selected_rank_raw: number;
+  selected_rank_constrained: number;
 }
 
 export interface ExperimentResult {
@@ -83,6 +104,27 @@ export interface ExperimentResult {
   total_steps: number;
   model_name: string;
   created_at: string;
+
+  // --- Grammar / Syncode configuration metadata ---
+  grammar_name: string;
+  parser_name: string;
+  syncode_mode_name: string;
+  syncode_available: boolean;
+  syncode_active_steps: number;
+  syncode_fallback_steps: number;
+  syncode_parse_error_steps: number;
+
+  // --- Final output grammar validation (optional for legacy saved experiments) ---
+  final_parse_valid?: boolean;
+  final_parse_error?: string;
+  unsupported_constructs_detected?: string[];
+
+  // --- Honest constraint evidence ---
+  constraint_requested?: boolean;
+  constraint_status?: string;
+  constraint_applied?: boolean;
+  fallback_occurred?: boolean;
+  syncode_error?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +155,22 @@ export interface GenerateResponse {
   mode: string;
   prompt: string;
   total_steps: number;
+  // grammar / syncode metadata
+  grammar_name: string;
+  parser_name: string;
+  syncode_mode_name: string;
+  syncode_available: boolean;
+  syncode_active_steps: number;
+  syncode_fallback_steps: number;
+  syncode_parse_error_steps: number;
+  final_parse_valid?: boolean;
+  final_parse_error?: string;
+  unsupported_constructs_detected?: string[];
+  constraint_requested?: boolean;
+  constraint_status?: string;
+  constraint_applied?: boolean;
+  fallback_occurred?: boolean;
+  syncode_error?: string;
   // full decoding trace — one entry per generated token
   steps: DecodingStep[];
 }

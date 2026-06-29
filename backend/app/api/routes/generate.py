@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import traceback
 
 from fastapi import APIRouter, HTTPException, status
@@ -10,11 +11,43 @@ from app.models.schemas import GenerateRequest, GenerateResponse
 from app.services.experiment_store import store
 from app.services.generation_validation import GenerationFailedError
 from app.services.llm_service import llm_service
+from app.services.verilog_validation import (
+    compute_constraint_status,
+    validate_verilog_output,
+)
 from app.core.config import settings
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 
+
+# ---------------------------------------------------------------------------
+# Verilog output post-processing
+# ---------------------------------------------------------------------------
+
+def _extract_verilog(text: str) -> str:
+    """
+    Extract the first complete module...endmodule block from generated text.
+
+    Strips markdown code fences and any explanatory prose so the displayed
+    output is pure Verilog.  If no module block is found, returns the
+    stripped original text (better than an empty string).
+    """
+    # Strip markdown code fences (```verilog, ```v, ``` etc.)
+    cleaned = re.sub(r"```[a-zA-Z]*\n?", "", text)
+    cleaned = re.sub(r"```", "", cleaned).strip()
+
+    # Extract first module...endmodule block (greedy across newlines)
+    match = re.search(r"(module\b.+?endmodule)", cleaned, re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    return cleaned
+
+
+# ---------------------------------------------------------------------------
+# Error helper
+# ---------------------------------------------------------------------------
 
 def _http_500_from_generation_error(exc: GenerationFailedError) -> HTTPException:
     detail = exc.to_detail()
@@ -30,18 +63,22 @@ def _http_500_from_generation_error(exc: GenerationFailedError) -> HTTPException
     )
 
 
+# ---------------------------------------------------------------------------
+# Route
+# ---------------------------------------------------------------------------
+
 @router.post(
     "/generate",
     response_model=GenerateResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
 )
 async def generate(request: GenerateRequest) -> GenerateResponse:
     """
     Run generation and return the complete decoding trace.
 
-    Returns HTTP 201 only when generation produces a valid non-empty trace.
-    Any failure (empty steps, empty trace, exception, validation error) raises
-    HTTP 500 with a structured detail payload — never a silent empty success.
+    Returns HTTP 200 when generation produces a valid non-empty trace.
+    Grammar-invalid final output is returned with final_parse_valid=false
+    rather than raising HTTP 500.
     """
     mode = "syncode" if request.use_syncode else "raw"
 
@@ -112,9 +149,70 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             },
         )
 
-    experiment.generated_code = generated_text
+    # Post-process: strip markdown fences and extract module...endmodule block.
+    clean_text = _extract_verilog(generated_text)
+    log.info(
+        "[API /generate] Verilog extraction: raw_len=%d clean_len=%d",
+        len(generated_text),
+        len(clean_text),
+    )
+
+    # Final grammar validation — independent of step-level masking.
+    validation = validate_verilog_output(clean_text)
+    log.info(
+        "[API /generate] final_parse_valid=%s unsupported=%s error=%r",
+        validation.final_parse_valid,
+        validation.unsupported_constructs_detected,
+        validation.final_parse_error[:200] if validation.final_parse_error else "",
+    )
+
+    # Aggregate Syncode stats across all steps for the evidence panel.
+    syncode_active_steps = sum(1 for s in steps if s.syncode_active)
+    syncode_fallback_steps = sum(1 for s in steps if s.fallback_used)
+    syncode_parse_error_steps = sum(1 for s in steps if s.parser_error)
+
+    # Determine if Syncode actually initialized (not just requested).
+    syncode_available = bool(
+        llm_service._syncode is not None
+        and getattr(llm_service._syncode, "available", False)
+    )
+
+    evidence = compute_constraint_status(
+        mode=mode,
+        syncode_available=syncode_available,
+        total_steps=len(steps),
+        syncode_active_steps=syncode_active_steps,
+        syncode_fallback_steps=syncode_fallback_steps,
+        final_parse_valid=validation.final_parse_valid,
+        final_parse_error=validation.final_parse_error,
+    )
+
+    status_message = ""
+    if mode == "syncode" and not validation.final_parse_valid:
+        status_message = (
+            "Generation completed but final output is not valid under the "
+            "tested Verilog grammar."
+        )
+
+    experiment.generated_code = clean_text
     experiment.steps = steps
     experiment.total_steps = len(steps)
+    experiment.grammar_name = "verilog"
+    experiment.parser_name = "lalr"
+    experiment.syncode_mode_name = "grammar_mask"
+    experiment.syncode_available = syncode_available
+    experiment.syncode_active_steps = syncode_active_steps
+    experiment.syncode_fallback_steps = syncode_fallback_steps
+    experiment.syncode_parse_error_steps = syncode_parse_error_steps
+    experiment.final_parse_valid = validation.final_parse_valid
+    experiment.final_parse_error = validation.final_parse_error
+    experiment.unsupported_constructs_detected = validation.unsupported_constructs_detected
+    experiment.comments_stripped_for_validation = validation.comments_stripped_for_validation
+    experiment.constraint_requested = evidence.constraint_requested
+    experiment.constraint_status = evidence.constraint_status
+    experiment.constraint_applied = evidence.constraint_applied
+    experiment.fallback_occurred = evidence.fallback_occurred
+    experiment.syncode_error = evidence.syncode_error
 
     try:
         store.save(experiment)
@@ -143,12 +241,28 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     response = GenerateResponse(
         experiment_id=experiment.experiment_id,
         status="completed",
-        message="",
-        generated_text=generated_text,
+        message=status_message,
+        generated_text=clean_text,
         model_name=settings.model_name,
         mode=mode,
         prompt=request.prompt,
         total_steps=len(steps),
+        grammar_name="verilog",
+        parser_name="lalr",
+        syncode_mode_name="grammar_mask",
+        syncode_available=syncode_available,
+        syncode_active_steps=syncode_active_steps,
+        syncode_fallback_steps=syncode_fallback_steps,
+        syncode_parse_error_steps=syncode_parse_error_steps,
+        final_parse_valid=validation.final_parse_valid,
+        final_parse_error=validation.final_parse_error,
+        unsupported_constructs_detected=validation.unsupported_constructs_detected,
+        comments_stripped_for_validation=validation.comments_stripped_for_validation,
+        constraint_requested=evidence.constraint_requested,
+        constraint_status=evidence.constraint_status,
+        constraint_applied=evidence.constraint_applied,
+        fallback_occurred=evidence.fallback_occurred,
+        syncode_error=evidence.syncode_error,
         steps=steps,
     )
 
@@ -157,11 +271,19 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         payload_bytes = len(payload_json.encode("utf-8"))
         log.info(
             "[API /generate response] experiment_id=%s status=completed "
-            "total_steps=%d payload_bytes=%d generated_text_len=%d",
+            "total_steps=%d payload_bytes=%d generated_text_len=%d "
+            "syncode_active=%d/%d fallback=%d/%d "
+            "final_parse_valid=%s constraint_status=%s",
             experiment.experiment_id,
             len(steps),
             payload_bytes,
-            len(generated_text),
+            len(clean_text),
+            syncode_active_steps,
+            len(steps),
+            syncode_fallback_steps,
+            len(steps),
+            validation.final_parse_valid,
+            evidence.constraint_status,
         )
         if log.isEnabledFor(logging.DEBUG):
             preview = payload_json[:2000]

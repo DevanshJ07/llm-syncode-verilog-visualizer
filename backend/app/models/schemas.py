@@ -61,6 +61,9 @@ class DecodingStep(BaseModel):
         masked_tokens, valid_tokens_after_syncode, top_tokens_before_syncode,
         entropy_after, num_masked, vocab_size, valid_token_count, masked_token_count,
         masked_percentage, probability_mass_removed
+
+    Grammar forensics (populated from Syncode forensic log):
+        accept_sequences, constraint_applied
     """
     step: int
     context: str  # decoded text up to (but not including) this step's token
@@ -92,6 +95,14 @@ class DecodingStep(BaseModel):
     masked_token_count: int = 0         # = num_masked (alias, kept for API clarity)
     masked_percentage: float = 0.0      # masked_token_count / vocab_size * 100
     probability_mass_removed: float = 0.0  # Σ raw_prob of all masked tokens
+
+    # --- Grammar forensics ------------------------------------------------
+    # Lark terminal names / grammar symbols allowed at this parse state.
+    # Populated from the Syncode forensic log; may be empty in raw mode.
+    accept_sequences: list[str] = Field(default_factory=list)
+    # True when Syncode grammar masking was applied and changed at least one logit.
+    # Alias for syncode_active kept here for explicit API clarity.
+    constraint_applied: bool = False
 
     # --- Parser recovery metadata -----------------------------------------
     # True if the Syncode grammar parser threw an exception at this step.
@@ -178,6 +189,32 @@ class ExperimentResult(BaseModel):
     model_name: str = ""
     created_at: str = ""  # ISO-8601 timestamp
 
+    # --- Grammar / Syncode configuration metadata -------------------------
+    # These fields carry static configuration info about the Syncode session
+    # so the UI can display evidence that constrained decoding was active.
+    grammar_name: str = "verilog"
+    parser_name: str = "lalr"
+    syncode_mode_name: str = "grammar_mask"
+    syncode_available: bool = False    # True if Syncode initialized successfully
+
+    # --- Aggregate step-level stats (for SynCode Evidence panel) ----------
+    syncode_active_steps: int = 0     # steps where grammar mask changed logits
+    syncode_fallback_steps: int = 0   # steps where Syncode fell back to raw
+    syncode_parse_error_steps: int = 0
+
+    # --- Final output grammar validation ----------------------------------
+    final_parse_valid: bool = False
+    final_parse_error: str = ""
+    unsupported_constructs_detected: list[str] = Field(default_factory=list)
+    comments_stripped_for_validation: bool = True
+
+    # --- Honest constraint evidence ---------------------------------------
+    constraint_requested: bool = False
+    constraint_status: str = "off"    # off | unavailable | none | partial | full | failed
+    constraint_applied: bool = False  # True only when full constraint + valid output
+    fallback_occurred: bool = False
+    syncode_error: str = ""
+
 
 # ---------------------------------------------------------------------------
 # API request / response schemas
@@ -217,14 +254,37 @@ class GenerateResponse(BaseModel):
     prompt: str = ""
     total_steps: int = 0
 
+    # --- Grammar / Syncode configuration metadata -------------------------
+    grammar_name: str = "verilog"
+    parser_name: str = "lalr"
+    syncode_mode_name: str = "grammar_mask"
+    syncode_available: bool = False
+    syncode_active_steps: int = 0
+    syncode_fallback_steps: int = 0
+    syncode_parse_error_steps: int = 0
+
+    # --- Final output grammar validation ----------------------------------
+    final_parse_valid: bool = False
+    final_parse_error: str = ""
+    unsupported_constructs_detected: list[str] = Field(default_factory=list)
+    comments_stripped_for_validation: bool = True
+
+    # --- Honest constraint evidence ---------------------------------------
+    constraint_requested: bool = False
+    constraint_status: str = "off"
+    constraint_applied: bool = False
+    fallback_occurred: bool = False
+    syncode_error: str = ""
+
     # --- Full decoding trace ---
     # One DecodingStep per generated token.  Each step contains:
     #   selected_token / selected_token_id  — the greedy-chosen token
     #   top_tokens                          — top-k candidates with probabilities
     #   entropy_before                      — Shannon entropy of the full vocab dist
-    #   top_tokens_before_syncode           — placeholder for Phase 3 Syncode data
+    #   top_tokens_before_syncode           — raw top-k BEFORE Syncode masking
     #   masked_tokens / valid_tokens_after_syncode / entropy_after / num_masked
-    #                                       — Syncode mask info (empty until Phase 3)
+    #                                       — Syncode mask info
+    #   accept_sequences                    — grammar terminals allowed at this state
     steps: list[DecodingStep] = Field(default_factory=list)
 
 

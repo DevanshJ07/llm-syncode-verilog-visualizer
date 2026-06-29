@@ -45,6 +45,22 @@ export function useGeneration(): UseGenerationReturn {
         total_steps: response.total_steps,
         model_name: response.model_name,
         created_at: new Date().toISOString(),
+        // Grammar / SynCode metadata from the backend
+        grammar_name: response.grammar_name ?? "verilog",
+        parser_name: response.parser_name ?? "lalr",
+        syncode_mode_name: response.syncode_mode_name ?? "grammar_mask",
+        syncode_available: response.syncode_available ?? false,
+        syncode_active_steps: response.syncode_active_steps ?? 0,
+        syncode_fallback_steps: response.syncode_fallback_steps ?? 0,
+        syncode_parse_error_steps: response.syncode_parse_error_steps ?? 0,
+        final_parse_valid: response.final_parse_valid ?? false,
+        final_parse_error: response.final_parse_error ?? "",
+        unsupported_constructs_detected: response.unsupported_constructs_detected ?? [],
+        constraint_requested: response.constraint_requested ?? false,
+        constraint_status: response.constraint_status ?? "off",
+        constraint_applied: response.constraint_applied ?? false,
+        fallback_occurred: response.fallback_occurred ?? false,
+        syncode_error: response.syncode_error ?? "",
       };
 
       // Final client-side guard — never show visualization with empty trace.

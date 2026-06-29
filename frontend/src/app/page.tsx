@@ -9,10 +9,12 @@
  * Layout (post-generation):
  * ┌─────────────────────────────────────────────────────┐
  * │ [Re-generate strip — collapsed PromptForm]          │
+ * ├─────────────────────────────────────────────────────┤
+ * │ SyncodeEvidencePanel  (grammar/constraint status)   │
  * ├──────────────────────┬──────────────────────────────┤
  * │  Generated code      │  Step Viewer                 │
- * │  (grows token by     │  (bar chart + table for      │
- * │   token as slider    │   the current step)          │
+ * │  (grows token by     │  (before/after masking +     │
+ * │   token as slider    │   forensic data for step)    │
  * │   is scrubbed)       │                              │
  * ├──────────────────────┴──────────────────────────────┤
  * │  StepPlayer  (slider + transport + speed)           │
@@ -31,12 +33,13 @@ import { StepViewer } from "@/components/visualization/StepViewer";
 import { StepPlayer } from "@/components/visualization/StepPlayer";
 import { EntropyChart } from "@/components/visualization/EntropyChart";
 import { DecodingTimeline } from "@/components/visualization/DecodingTimeline";
+import { SyncodeEvidencePanel } from "@/components/visualization/SyncodeEvidencePanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Card } from "@/components/ui/Card";
 import { useGeneration } from "@/hooks/useGeneration";
-import { formatDate, formatPct } from "@/lib/utils";
+import { formatPct } from "@/lib/utils";
 import type { GenerateRequest } from "@/types/decoding";
 
 export default function HomePage() {
@@ -87,7 +90,6 @@ export default function HomePage() {
     if (!experiment || experiment.steps.length === 0) return "";
     const step = experiment.steps[currentStep];
     if (!step) return "";
-    // context = text generated BEFORE this step; selected_token = this step's token
     return step.context + step.selected_token;
   }, [experiment, currentStep]);
 
@@ -197,6 +199,9 @@ export default function HomePage() {
           {experiment.total_steps} tokens
         </span>
         <Badge variant="neutral">{experiment.mode}</Badge>
+        {experiment.mode === "syncode" && (
+          <Badge variant="info">Verilog grammar</Badge>
+        )}
         <button
           type="button"
           onClick={() => setShowForm((v) => !v)}
@@ -215,6 +220,9 @@ export default function HomePage() {
           <PromptForm onSubmit={handleGenerate} isLoading={isLoading} error={error} />
         </Card>
       )}
+
+      {/* ── SynCode Evidence Panel ────────────────────────────────────── */}
+      <SyncodeEvidencePanel experiment={experiment} />
 
       {/* ── Stats strip ───────────────────────────────────────────────── */}
       {stats && (
@@ -246,6 +254,16 @@ export default function HomePage() {
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
               Generated Output
             </h2>
+            {experiment.mode === "syncode" && experiment.final_parse_valid === false && (
+              <span className="rounded border border-[#f85149]/40 bg-[#f85149]/10 px-1.5 py-0.5 text-[10px] text-[#f85149]">
+                not grammar-valid
+              </span>
+            )}
+            {experiment.mode === "syncode" && experiment.final_parse_valid === true && (
+              <span className="rounded border border-[#3fb950]/40 bg-[#3fb950]/10 px-1.5 py-0.5 text-[10px] text-[#3fb950]">
+                grammar-valid
+              </span>
+            )}
             <span className="ml-auto font-mono text-[10px] text-[#484f58]">
               up to step {currentStep + 1}
             </span>
@@ -265,11 +283,11 @@ export default function HomePage() {
         {/* Active step detail — wider forensic panel */}
         <section className="flex flex-col gap-1.5 lg:col-span-8">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
-            Step Detail — Syncode Forensics
+            Step Detail — SynCode Forensics
           </h2>
           {activeStep ? (
             <div className="overflow-y-auto max-h-[42vh] rounded-md border border-surface-border bg-surface-raised p-3">
-              <StepViewer step={activeStep} />
+              <StepViewer step={activeStep} mode={experiment.mode} />
             </div>
           ) : (
             <div className="flex h-40 items-center justify-center rounded-md border border-surface-border text-sm text-[#484f58]">

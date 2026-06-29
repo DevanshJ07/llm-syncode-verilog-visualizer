@@ -8,11 +8,13 @@
  *   • raw top-k probability chart
  *   • probability table
  *
- * SYNCODE MODE (top_tokens_before_syncode populated):
+ * SYNCODE MODE (top_tokens_before_syncode populated OR experiment mode is "syncode"):
+ *   • Constraint status badge (active / fallback / parse-failed)
  *   • Syncode impact metrics card
  *   • Entropy before → after (dual bars + delta badge)
  *   • Side-by-side: BEFORE SYNCODE | AFTER SYNCODE
  *   • MASKED TOKENS section (scrollable, red, shows raw_prob)
+ *   • Accepted grammar terminals (accept_sequences)
  */
 
 import { useMemo } from "react";
@@ -23,6 +25,8 @@ import type { DecodingStep, MaskedTokenEntry, TopToken } from "@/types/decoding"
 
 interface Props {
   step: DecodingStep;
+  /** Pass experiment.mode so Syncode panels show even when step arrays are empty (e.g. fallback). */
+  mode?: string;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -41,6 +45,30 @@ function maskSeverityColor(pct: number): string {
   if (pct < 50) return "#3fb950";
   if (pct < 85) return "#d29922";
   return "#f85149";
+}
+
+/** Returns a human-readable constraint status and colour for this step. */
+function stepConstraintStatus(step: DecodingStep): {
+  label: string;
+  color: string;
+  icon: string;
+} {
+  if (step.parser_error) {
+    return { label: "Parse failed — fallback", color: "#f85149", icon: "✗" };
+  }
+  if (step.fallback_used) {
+    return { label: "Fallback (raw logits used)", color: "#d29922", icon: "⚠" };
+  }
+  if (step.syncode_active || step.constraint_applied) {
+    const n = step.grammar_masked_count || step.num_masked;
+    return {
+      label: `SynCode active — ${n.toLocaleString()} tokens masked`,
+      color: "#3fb950",
+      icon: "✓",
+    };
+  }
+  // Syncode was in use but masked nothing at this step
+  return { label: "SynCode active — no masking this step", color: "#8b949e", icon: "○" };
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
@@ -145,7 +173,7 @@ function ProbTable({
 function MaskedTokensPanel({ tokens }: { tokens: MaskedTokenEntry[] }) {
   if (tokens.length === 0) return null;
   return (
-      <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
         <p className="text-xs font-bold uppercase tracking-wider text-[#f85149]">
           ✗ Masked Tokens
@@ -182,6 +210,28 @@ function MaskedTokensPanel({ tokens }: { tokens: MaskedTokenEntry[] }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/** Accepted grammar terminals from the incremental Lark parser state. */
+function AcceptSequencesPanel({ seqs }: { seqs: string[] }) {
+  if (seqs.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]">
+        Allowed grammar terminals
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {seqs.map((s, i) => (
+          <span
+            key={i}
+            className="rounded border border-[#30363d] bg-[#161b22] px-1.5 py-0.5 font-mono text-[11px] text-[#58a6ff]"
+          >
+            {s}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -294,14 +344,24 @@ function SyncodeMetricsCard({ step }: { step: DecodingStep }) {
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export function StepViewer({ step }: Props) {
+export function StepViewer({ step, mode }: Props) {
+  // Show syncode panels when:
+  //  • the experiment was run in syncode mode (mode prop), OR
+  //  • the step itself has syncode data (e.g. loaded from an old experiment)
   const isSyncodeMode = useMemo(
     () =>
+      mode === "syncode" ||
       step.top_tokens_before_syncode.length > 0 ||
       step.valid_tokens_after_syncode.length > 0 ||
-      step.num_masked > 0,
-    [step],
+      step.num_masked > 0 ||
+      step.syncode_active ||
+      step.fallback_used,
+    [mode, step],
   );
+
+  // Determine whether we actually have before/after distribution data.
+  const hasBeforeData = step.top_tokens_before_syncode.length > 0;
+  const hasAfterData = step.valid_tokens_after_syncode.length > 0;
 
   // Normalise valid_tokens_after_syncode → TopToken[] for the chart
   const validAsTopTokens: TopToken[] = useMemo(
@@ -332,6 +392,7 @@ export function StepViewer({ step }: Props) {
   );
 
   const selectedId = step.selected_token_id;
+  const cs = stepConstraintStatus(step);
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -343,7 +404,18 @@ export function StepViewer({ step }: Props) {
         </span>
         <Badge variant="selected">{JSON.stringify(step.selected_token)}</Badge>
         <span className="font-mono text-xs text-[#8b949e]">id&nbsp;{step.selected_token_id}</span>
-        {isSyncodeMode && <Badge variant="info">Syncode</Badge>}
+        {isSyncodeMode && (
+          <span
+            className="rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium"
+            style={{
+              color: cs.color,
+              borderColor: cs.color + "50",
+              background: cs.color + "15",
+            }}
+          >
+            {cs.icon} {cs.label}
+          </span>
+        )}
         {step.num_masked > 0 && (
           <Badge variant="masked">{step.num_masked.toLocaleString()} masked</Badge>
         )}
@@ -363,7 +435,9 @@ export function StepViewer({ step }: Props) {
             <div className="flex items-start gap-2 rounded-md border border-[#d29922]/30 bg-[#d29922]/10 px-3 py-2 text-xs text-[#d29922]">
               <span className="mt-0.5 text-sm">⚠</span>
               <div>
-                <span className="font-semibold">Parser fallback at step {step.step}.</span>
+                <span className="font-semibold">
+                  {step.parser_error ? "Parser error" : "Fallback"} at step {step.step}.
+                </span>
                 {" "}Syncode grammar masking was not applied — raw logits used for token selection.
                 {step.parser_error_message && (
                   <p className="mt-1 font-mono text-[10px] opacity-80">
@@ -374,101 +448,148 @@ export function StepViewer({ step }: Props) {
             </div>
           )}
 
-          {/* Metrics card */}
-          <SyncodeMetricsCard step={step} />
+          {/* Only show detailed panels when we actually have syncode data */}
+          {hasBeforeData ? (
+            <>
+              {/* Metrics card */}
+              <SyncodeMetricsCard step={step} />
 
-          {/* Entropy comparison */}
-          <div className="flex flex-col gap-2 rounded-md border border-[#21262d] bg-[#0d1117] p-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8b949e]">
-                Entropy — H = −Σ p·log(p)
-              </span>
-              {step.entropy_before !== null && step.entropy_after !== null && (
-                <span
-                  className="ml-auto rounded bg-[#161b22] px-2 py-0.5 font-mono text-sm font-bold tabular-nums"
-                  title="Entropy change from grammar masking (negative = more focused)"
-                  style={{
-                    color: step.entropy_after < step.entropy_before ? "#3fb950" : "#f85149",
-                  }}
-                >
-                  Δ {(step.entropy_after - step.entropy_before).toFixed(3)}
-                </span>
+              {/* Entropy comparison */}
+              <div className="flex flex-col gap-2 rounded-md border border-[#21262d] bg-[#0d1117] p-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8b949e]">
+                    Entropy — H = −Σ p·log(p)
+                  </span>
+                  {step.entropy_before !== null && step.entropy_after !== null && (
+                    <span
+                      className="ml-auto rounded bg-[#161b22] px-2 py-0.5 font-mono text-sm font-bold tabular-nums"
+                      title="Entropy change from grammar masking (negative = more focused)"
+                      style={{
+                        color: step.entropy_after < step.entropy_before ? "#3fb950" : "#f85149",
+                      }}
+                    >
+                      Δ {(step.entropy_after - step.entropy_before).toFixed(3)}
+                    </span>
+                  )}
+                </div>
+                {step.entropy_before !== null && (
+                  <EntropyBar value={step.entropy_before} label="Before SynCode masking" />
+                )}
+                {step.entropy_after !== null && (
+                  <EntropyBar value={step.entropy_after} label="After SynCode masking" />
+                )}
+              </div>
+
+              {/* Side-by-side: BEFORE | AFTER */}
+              <div className="grid gap-2.5 lg:grid-cols-2">
+                {/* BEFORE SYNCODE */}
+                <div className="flex flex-col gap-2 rounded-md border border-[#21262d] bg-[#0d1117] p-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#8b949e]">
+                      Before SynCode masking
+                    </p>
+                    <span className="font-mono text-[11px] text-[#8b949e]">raw LLM distribution</span>
+                  </div>
+                  <TokenProbabilityChart
+                    candidates={beforeTopTokens.length > 0 ? beforeTopTokens : step.top_tokens}
+                    selectedTokenId={selectedId}
+                    maskedIds={step.masked_tokens.map((m) => m.token_id)}
+                  />
+                  <ProbTable
+                    rows={(beforeTopTokens.length > 0 ? beforeTopTokens : step.top_tokens).map((t) => ({
+                      token_id: t.token_id,
+                      token: t.token,
+                      probability: t.probability,
+                    }))}
+                    selectedId={selectedId}
+                    maskedIdSet={maskedIdSet}
+                  />
+                </div>
+
+                {/* AFTER SYNCODE */}
+                <div className="flex flex-col gap-2 rounded-md border border-[#58a6ff]/30 bg-[#0d1117] p-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#58a6ff]">
+                      After SynCode masking
+                    </p>
+                    <span className="font-mono text-[11px] text-[#8b949e]">
+                      {hasAfterData ? "constrained distribution" : "no valid candidates"}
+                    </span>
+                  </div>
+                  {hasAfterData ? (
+                    <>
+                      <TokenProbabilityChart
+                        candidates={validAsTopTokens}
+                        selectedTokenId={selectedId}
+                      />
+                      <ProbTable
+                        rows={validAsTopTokens.map((t) => ({
+                          token_id: t.token_id,
+                          token: t.token,
+                          probability: t.probability,
+                        }))}
+                        selectedId={selectedId}
+                      />
+                    </>
+                  ) : (
+                    <div className="flex h-24 items-center justify-center text-xs text-[#484f58]">
+                      No post-mask candidates (all tokens suppressed or fallback used)
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* MASKED TOKENS section */}
+              <MaskedTokensPanel tokens={step.masked_tokens} />
+
+              {/* Summary callout */}
+              {step.num_masked > 0 && (
+                <div className="flex items-start gap-2 rounded-md border border-[#f85149]/20 bg-red-900/10 px-3 py-2 text-xs text-[#f85149]">
+                  <span className="mt-0.5 text-sm">✗</span>
+                  <span>
+                    <strong>{step.num_masked.toLocaleString()}</strong> of{" "}
+                    <strong>{step.vocab_size.toLocaleString()}</strong> tokens (
+                    <strong>{step.masked_percentage.toFixed(1)}%</strong>) suppressed by Verilog-grammar
+                    constraint, removing{" "}
+                    <strong>{formatPct(step.probability_mass_removed, 1)}</strong> of raw probability
+                    mass. The constrained distribution is renormalised over the remaining{" "}
+                    <strong>{step.valid_token_count.toLocaleString()}</strong> valid tokens.
+                  </span>
+                </div>
               )}
-            </div>
-            {step.entropy_before !== null && (
-              <EntropyBar value={step.entropy_before} label="Before Syncode" />
-            )}
-            {step.entropy_after !== null && (
-              <EntropyBar value={step.entropy_after} label="After Syncode" />
-            )}
-          </div>
 
-          {/* Side-by-side: BEFORE | AFTER */}
-          <div className="grid gap-2.5 lg:grid-cols-2">
-            {/* BEFORE SYNCODE */}
-            <div className="flex flex-col gap-2 rounded-md border border-[#21262d] bg-[#0d1117] p-2.5">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-[#8b949e]">
-                  Before Syncode
-                </p>
-                <span className="font-mono text-[11px] text-[#8b949e]">raw distribution</span>
+              {/* Accepted grammar terminals */}
+              <AcceptSequencesPanel seqs={step.accept_sequences ?? []} />
+            </>
+          ) : (
+            /* Syncode mode but no step-level data (fallback / syncode unavailable) */
+            <>
+              {step.entropy_before !== null && (
+                <div className="rounded-md border border-[#21262d] bg-[#0d1117] p-2.5">
+                  <EntropyBar value={step.entropy_before} label="Entropy H = −Σ p·log(p)" />
+                </div>
+              )}
+              <div className="rounded-md border border-[#d29922]/20 bg-[#d29922]/5 px-3 py-2 text-xs text-[#d29922]">
+                Before / after SynCode masking data not available for this step
+                {step.fallback_used && " — Syncode fell back to raw decoding"}.
+                {step.parser_error && " Parser exception occurred."}
+                {" "}Raw distribution shown below.
               </div>
               <TokenProbabilityChart
-                candidates={beforeTopTokens.length > 0 ? beforeTopTokens : step.top_tokens}
+                candidates={step.top_tokens}
                 selectedTokenId={selectedId}
-                maskedIds={step.masked_tokens.map((m) => m.token_id)}
+                title={`Top ${step.top_tokens.length} candidates (raw)`}
               />
               <ProbTable
-                rows={(beforeTopTokens.length > 0 ? beforeTopTokens : step.top_tokens).map((t) => ({
-                  token_id: t.token_id,
-                  token: t.token,
-                  probability: t.probability,
-                }))}
-                selectedId={selectedId}
-                maskedIdSet={maskedIdSet}
-              />
-            </div>
-
-            {/* AFTER SYNCODE */}
-            <div className="flex flex-col gap-2 rounded-md border border-[#58a6ff]/30 bg-[#0d1117] p-2.5">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-[#58a6ff]">
-                  After Syncode
-                </p>
-                <span className="font-mono text-[11px] text-[#8b949e]">constrained distribution</span>
-              </div>
-              <TokenProbabilityChart
-                candidates={validAsTopTokens.length > 0 ? validAsTopTokens : step.top_tokens}
-                selectedTokenId={selectedId}
-              />
-              <ProbTable
-                rows={(validAsTopTokens.length > 0 ? validAsTopTokens : step.top_tokens).map((t) => ({
+                rows={step.top_tokens.map((t) => ({
                   token_id: t.token_id,
                   token: t.token,
                   probability: t.probability,
                 }))}
                 selectedId={selectedId}
               />
-            </div>
-          </div>
-
-          {/* MASKED TOKENS section */}
-          <MaskedTokensPanel tokens={step.masked_tokens} />
-
-          {/* Summary callout */}
-          {step.num_masked > 0 && (
-            <div className="flex items-start gap-2 rounded-md border border-[#f85149]/20 bg-red-900/10 px-3 py-2 text-xs text-[#f85149]">
-              <span className="mt-0.5 text-sm">✗</span>
-              <span>
-                <strong>{step.num_masked.toLocaleString()}</strong> of{" "}
-                <strong>{step.vocab_size.toLocaleString()}</strong> tokens (
-                <strong>{step.masked_percentage.toFixed(1)}%</strong>) suppressed by Verilog-grammar
-                constraint, removing{" "}
-                <strong>{formatPct(step.probability_mass_removed, 1)}</strong> of raw probability
-                mass. The constrained distribution is renormalised over the remaining{" "}
-                <strong>{step.valid_token_count.toLocaleString()}</strong> valid tokens.
-              </span>
-            </div>
+              <AcceptSequencesPanel seqs={step.accept_sequences ?? []} />
+            </>
           )}
         </>
       ) : (
