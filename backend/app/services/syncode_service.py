@@ -69,7 +69,7 @@ class SyncodeService:
         if not self.is_available:
             return logits, []
 
-        # TODO: plug in syncode.GrammarConstrainedLogitsProcessor for C grammar
+        # TODO: plug in syncode.GrammarConstrainedLogitsProcessor for Verilog grammar
         masked_token_ids: list[int] = []
         return logits, masked_token_ids
 
@@ -81,7 +81,7 @@ class SyncodeService:
         """
         if not self.is_available:
             return model
-        # TODO: return syncode.Syncode(model=model, tokenizer=tokenizer, grammar="c")
+        # TODO: return syncode.Syncode(model=model, tokenizer=tokenizer, grammar="verilog")
         return model
 
 

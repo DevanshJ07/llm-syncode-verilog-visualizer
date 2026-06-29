@@ -1,0 +1,88 @@
+// Verilog grammar for SynCode constrained decoding
+// Used by SynViz — Verilog Syncode Visualizer
+
+start: description*
+
+?description: module
+
+module: "module" name_of_module list_of_ports? ";" module_item* "endmodule"
+
+?name_of_module: IDENTIFIER
+
+list_of_ports: "(" port ("," port)* ")"
+?port: IDENTIFIER
+
+?module_item: input_declaration
+            | output_declaration
+            | net_declaration
+            | module_instantiation
+            | continuous_assign
+
+input_declaration: "input" list_of_variables ";"
+output_declaration: "output" list_of_variables ";"
+net_declaration: "wire" list_of_variables ";"
+
+list_of_variables: IDENTIFIER ("," IDENTIFIER)*
+
+continuous_assign: "assign" list_of_assignments ";"
+list_of_assignments: net_assignment ("," net_assignment)*
+net_assignment: IDENTIFIER "=" expression
+
+module_instantiation: name_of_module module_instance ("," module_instance)* ";"
+module_instance: IDENTIFIER? "(" list_of_module_connections? ")"
+
+list_of_module_connections: ordered_port_connection ("," ordered_port_connection)*
+                          | named_port_connection ("," named_port_connection)*
+
+ordered_port_connection: expression?
+named_port_connection: "." IDENTIFIER "(" expression? ")"
+
+?expression: ternary
+
+?ternary: or
+        | or "?" or ":" or
+
+?or: xor
+   | or_gate
+
+or_gate: or "|" xor
+
+?xor: and
+    | xor_gate
+    | xnor_gate
+
+xor_gate: xor "^" and
+xnor_gate: xor "~^" and
+         | xor "^~" and
+
+?and: unary
+    | and_gate
+
+and_gate: and "&" unary
+
+?unary: primary
+      | "!" unary
+      | "~" unary
+
+?primary: IDENTIFIER
+        | constant
+        | "(" expression ")"
+
+constant: "1'b0"
+        | "1'h0"
+        | "1'b1"
+        | "1'h1"
+        | "1'bx"
+        | "1'hx"
+
+IDENTIFIER: /\([^\s]+\)|[a-zA-Z_][a-zA-Z0-9_]*/
+
+WS: /[ \t\r\n]+/
+COMMENT: /\/\/[^\n]*/
+NEWLINE: /\n/
+MULTILINE_COMMENT: /\/\*[^*]*\*\//
+
+%ignore WS
+%ignore COMMENT
+%ignore NEWLINE
+%ignore MULTILINE_COMMENT

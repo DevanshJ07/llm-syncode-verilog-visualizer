@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
+
+# Absolute path to the Verilog Lark grammar file shipped alongside the backend.
+_VERILOG_GRAMMAR_PATH: str = os.path.join(
+    os.path.dirname(__file__), "..", "..", "verilog.lark"
+)
 
 import torch
 import torch.nn.functional as F
@@ -114,7 +120,7 @@ class _SyncodeConstraint:
 
     Real API (confirmed against syncode 0.4.16):
         from syncode import Grammar, SyncodeLogitsProcessor
-        grammar   = Grammar('c')          # Grammar object, not a plain string
+        grammar   = Grammar('/path/to/verilog.lark')  # path to custom Lark file
         processor = SyncodeLogitsProcessor(
                         grammar, tokenizer,
                         use_cache=True,          # caches DFA mask store to disk
@@ -125,10 +131,14 @@ class _SyncodeConstraint:
         masked = processor(all_input_ids, logits.unsqueeze(0))  # [1, vocab]
 
     The DFA mask store is cached to disk by syncode, so only the first run
-    for a given (grammar, tokenizer) pair is slow (~30 s for C grammar).
+    for a given (grammar, tokenizer) pair is slow (~30 s for Verilog grammar).
     """
 
-    def __init__(self, tokenizer: "PreTrainedTokenizerBase", grammar: str = "c") -> None:
+    def __init__(
+        self,
+        tokenizer: "PreTrainedTokenizerBase",
+        grammar: str = _VERILOG_GRAMMAR_PATH,
+    ) -> None:
         self._processor = None
         self._available = False
         self._tokenizer = tokenizer
@@ -144,8 +154,9 @@ class _SyncodeConstraint:
             from syncode import Grammar, SyncodeLogitsProcessor  # noqa: PLC0415
 
             log.info(
-                "Initializing Syncode %s-grammar processor "
-                "(first run compiles DFA mask store — may take ~30 s).",
+                "Initializing Syncode Verilog-grammar processor "
+                "(first run compiles DFA mask store — may take ~30 s). "
+                "Grammar path: %s",
                 grammar,
             )
             gram_obj = Grammar(grammar)
@@ -158,7 +169,7 @@ class _SyncodeConstraint:
                 mode="grammar_mask",
             )
             self._available = True
-            log.info("Syncode ready (grammar=%s)", grammar)
+            log.info("Syncode ready (Verilog grammar, path=%s)", grammar)
 
             # Install forensic instrumentation and run init probe.
             self._install_forensic_patch()
@@ -438,7 +449,7 @@ class _SyncodeConstraint:
         }
         print(
             f"[FORENSIC] Installed forensic patch on grammar_engine.mask_scores "
-            f"(grammar={self._grammar_name})",
+            f"(grammar=verilog, path={self._grammar_name})",
             flush=True,
         )
 
@@ -454,7 +465,7 @@ class _SyncodeConstraint:
         ge = self._processor.grammar_engine
 
         print(
-            f"\n[FORENSIC INIT PROBE] grammar={self._grammar_name}"
+            f"\n[FORENSIC INIT PROBE] grammar=verilog"
             f"  ignore_whitespace={ge._ignore_whitespace}"
             f"  parse_output_only={ge.parse_output_only}"
             f"  whitespace_ids={len(self._whitespace_ids)}",
@@ -697,7 +708,7 @@ class LLMService:
     first generate() call, then reused for every subsequent request.
 
     When settings.syncode_enabled is True the service also initialises a
-    _SyncodeConstraint (C grammar) that can be activated per-request via
+    _SyncodeConstraint (Verilog grammar) that can be activated per-request via
     the use_syncode flag.
     """
 
@@ -738,7 +749,7 @@ class LLMService:
         Model is loaded in fp32 on CPU.  low_cpu_mem_usage=True streams
         weight shards so peak RAM stays near the final footprint (~3 GB).
 
-        If settings.syncode_enabled is True the Syncode C-grammar processor
+        If settings.syncode_enabled is True the Syncode Verilog-grammar processor
         is also initialised here (once, cached globally).
         """
         if self._loaded:
@@ -775,12 +786,14 @@ class LLMService:
             n_params = sum(p.numel() for p in self._model.parameters())
             log.info("Model ready — %.0fM parameters", n_params / 1e6)
 
-            # Optionally initialise Syncode grammar constraint.
+            # Optionally initialise Syncode Verilog-grammar constraint.
             if settings.syncode_enabled:
-                self._syncode = _SyncodeConstraint(self._tokenizer)
+                self._syncode = _SyncodeConstraint(
+                    self._tokenizer, grammar=_VERILOG_GRAMMAR_PATH
+                )
             else:
                 log.info("Syncode disabled (SYNCODE_ENABLED=false). "
-                         "Set to true and restart to enable grammar masking.")
+                         "Set to true and restart to enable Verilog grammar masking.")
 
             self._loaded = True
 
@@ -1291,27 +1304,19 @@ class LLMService:
             log.debug("Syncode parse state reset for new generation")
 
         # ── Format prompt ───────────────────────────────────────────────────
-        # In Syncode/C-grammar mode we MUST NOT use the chat template (it adds
-        # <|im_start|>/<|im_end|> control tokens that the C grammar cannot parse).
+        # In Syncode/Verilog-grammar mode we MUST NOT use the chat template
+        # (it adds <|im_start|>/<|im_end|> control tokens that the Verilog
+        # grammar cannot parse).
         #
-        # Prompt format choice — why "/* prompt */" not "// prompt":
-        #
-        # The Syncode C grammar (c.lark) is C89-only and WIP.  Its start rule is:
-        #     start: declaration*
-        #     declaration: data_type NAME "(" parameters? ")" "{" statement* "}"
-        # Comments (both // and /* */) are only valid as STATEMENTS inside a
-        # function body, NOT at the top level.  With parse_output_only=True the
-        # grammar parses only the GENERATED tokens starting from the initial state
-        # (start: declaration*), so it always expects a type keyword first.
-        #
-        # "// prompt\n" caused the model to generate more // comment continuation
-        # tokens.  The LALR parser threw UnexpectedToken('SLASH', '/') at token 1,
-        # permanently setting parse_failed=True and disabling ALL masking.
-        #
-        # "/* prompt */\n" closes before any generated tokens: the model sees a
-        # completed documentation comment and naturally generates a full function
-        # definition (int foo(...) { ... }).  The grammar parser sees "int" as its
-        # first token — exactly what declaration* expects — and masking activates.
+        # Prompt format — "/* prompt */\n":
+        #   The Verilog grammar's start rule is `description*` which expects
+        #   a `module` keyword as the first real token.  With parse_output_only=True
+        #   Syncode only parses the GENERATED tokens; the prompt itself is never
+        #   fed to the grammar parser.  Using a block comment wraps the prompt
+        #   cleanly: the model sees a completed documentation comment and
+        #   naturally generates a full `module ... endmodule` definition.
+        #   MULTILINE_COMMENT is `%ignore`d in the Verilog grammar, so if any
+        #   comment tokens leak into the generated stream they are silently skipped.
         #
         # Guard against embedded */ in the prompt that would close the comment early.
         if effective_syncode:

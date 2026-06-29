@@ -6,10 +6,9 @@
  * All generation state lives in the parent (page.tsx) via useGeneration.
  * This component only owns the prompt text, settings, and Syncode toggle.
  *
- * The Syncode toggle is now functional.  When enabled, POST /generate
- * will apply C-grammar masking at each decoding step and populate the
- * top_tokens_before_syncode / masked_tokens / valid_tokens_after_syncode
- * fields in the response.
+ * The Syncode toggle is functional.  When enabled, POST /generate applies
+ * Verilog-grammar masking at each decoding step and populates
+ * top_tokens_before_syncode / masked_tokens / valid_tokens_after_syncode.
  */
 
 import { useState } from "react";
@@ -23,7 +22,7 @@ interface Props {
   error: string | null;
 }
 
-const DEFAULT_PROMPT = `Write a C function that reverses a null-terminated string in-place.`;
+const DEFAULT_PROMPT = `Write a Verilog module that implements a 2-to-1 multiplexer with inputs a, b, sel and output y.`;
 
 export function PromptForm({ onSubmit, isLoading, error }: Props) {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
@@ -82,13 +81,13 @@ export function PromptForm({ onSubmit, isLoading, error }: Props) {
           </span>
           <span className="text-[10px] text-[#484f58]">
             {useSyncode
-              ? "Grammar masking active — invalid C tokens will be suppressed"
+              ? "Grammar masking active — invalid Verilog tokens will be suppressed"
               : "Off — raw greedy decoding, no grammar constraint"}
           </span>
         </div>
         {useSyncode && (
           <span className="ml-auto rounded border border-accent-blue/40 bg-accent-blue/10 px-1.5 py-0.5 text-[10px] text-accent-blue">
-            C grammar
+            Verilog grammar
           </span>
         )}
       </label>
@@ -115,7 +114,7 @@ export function PromptForm({ onSubmit, isLoading, error }: Props) {
 
       <p className="text-[11px] text-[#484f58]">
         Qwen2.5-Coder-1.5B · CPU
-        {useSyncode && " · Syncode C grammar (DFA builds on first run ~30 s)"}
+        {useSyncode && " · Syncode Verilog grammar (DFA builds on first run ~30 s)"}
         {!useSyncode && " · ~30–90 s on first run (model downloads once)"}
       </p>
 

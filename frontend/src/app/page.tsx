@@ -119,8 +119,7 @@ export default function HomePage() {
         <div>
           <h1 className="text-2xl font-bold text-[#e6edf3]">Generate &amp; Visualize</h1>
           <p className="mt-1 text-sm text-[#8b949e]">
-            Generation failed. The error below is from the backend — no placeholder
-            output is shown.
+            Generation failed. The error below is from the backend — no placeholder output is shown.
           </p>
         </div>
         <Card>
@@ -137,8 +136,8 @@ export default function HomePage() {
         <div>
           <h1 className="text-2xl font-bold text-[#e6edf3]">Generate &amp; Visualize</h1>
           <p className="mt-1 text-sm leading-relaxed text-[#8b949e]">
-            Qwen2.5-Coder generates code token-by-token with full decoding traces.
-            Toggle Syncode C-grammar masking to compare raw vs constrained distributions,
+            Qwen2.5-Coder generates Verilog token-by-token with full decoding traces.
+            Toggle Syncode Verilog-grammar masking to compare raw vs constrained distributions,
             entropy shifts, and masked-token forensics at every step.
           </p>
         </div>
@@ -150,7 +149,7 @@ export default function HomePage() {
             ["Model", "Qwen2.5-Coder"],
             ["Runtime", "CPU · fp32"],
             ["Decoding", "Nucleus + trace"],
-            ["Syncode", "C grammar mask"],
+            ["Syncode", "Verilog grammar"],
           ].map(([k, v]) => (
             <div key={k} className="rounded-md border border-surface-border bg-surface-raised p-2">
               <p className="text-[#484f58]">{k}</p>
@@ -168,8 +167,8 @@ export default function HomePage() {
       <div className="flex flex-col items-center gap-6 py-32">
         <Spinner size="lg" label="Generating tokens…" />
         <p className="max-w-sm text-center text-xs text-[#484f58]">
-          Qwen2.5-Coder-1.5B-Instruct is generating on CPU.
-          First run downloads weights (~3 GB); Syncode DFA build adds ~30 s once.
+          Qwen2.5-Coder-1.5B-Instruct is generating Verilog on CPU.
+          First run downloads weights (~3 GB); Syncode Verilog DFA build adds ~30 s once.
         </p>
         <Button variant="ghost" size="sm" onClick={reset}>
           Cancel

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # Server
-    app_name: str = "LLM Syncode Visualizer API"
+    app_name: str = "SynViz — Verilog Syncode Visualizer API"
     debug: bool = False
     host: str = "0.0.0.0"
     port: int = 8000

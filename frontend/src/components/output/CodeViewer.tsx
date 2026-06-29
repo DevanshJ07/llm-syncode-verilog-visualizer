@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * CodeViewer — displays syntax-highlighted C code with clickable line numbers.
+ * CodeViewer — displays syntax-highlighted Verilog code with clickable line numbers.
  *
  * Clicking a line will call onLineClick(lineIndex) so parent components can
  * link lines to the corresponding decoding step in the visualization panel.

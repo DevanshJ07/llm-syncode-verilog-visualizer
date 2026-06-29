@@ -151,7 +151,7 @@ function MaskedTokensPanel({ tokens }: { tokens: MaskedTokenEntry[] }) {
           ✗ Masked Tokens
         </p>
         <span className="font-mono text-[11px] text-[#8b949e]">
-          top-{tokens.length} rejected by C grammar
+          top-{tokens.length} rejected by Verilog grammar
         </span>
       </div>
       <div className="max-h-44 overflow-y-auto overflow-x-auto rounded border border-[#f85149]/25 bg-red-900/8">
@@ -177,7 +177,7 @@ function MaskedTokensPanel({ tokens }: { tokens: MaskedTokenEntry[] }) {
                 <td className="px-2.5 py-1 text-right font-medium tabular-nums">
                   {formatPct(t.raw_prob, 3)}
                 </td>
-                <td className="px-2.5 py-1 text-[11px] text-[#f85149]/60">invalid C</td>
+                <td className="px-2.5 py-1 text-[11px] text-[#f85149]/60">invalid Verilog</td>
               </tr>
             ))}
           </tbody>
@@ -221,7 +221,7 @@ function SyncodeMetricsCard({ step }: { step: DecodingStep }) {
       label: "Masked",
       value: step.masked_token_count.toLocaleString(),
       color: "#f85149",
-      title: "Tokens rejected by C grammar",
+      title: "Tokens rejected by Verilog grammar",
     },
     {
       label: "Masked %",
@@ -462,7 +462,7 @@ export function StepViewer({ step }: Props) {
               <span>
                 <strong>{step.num_masked.toLocaleString()}</strong> of{" "}
                 <strong>{step.vocab_size.toLocaleString()}</strong> tokens (
-                <strong>{step.masked_percentage.toFixed(1)}%</strong>) suppressed by C-grammar
+                <strong>{step.masked_percentage.toFixed(1)}%</strong>) suppressed by Verilog-grammar
                 constraint, removing{" "}
                 <strong>{formatPct(step.probability_mass_removed, 1)}</strong> of raw probability
                 mass. The constrained distribution is renormalised over the remaining{" "}

@@ -3,9 +3,9 @@ import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
 
 export const metadata: Metadata = {
-  title: "SynViz – LLM Syncode Visualizer",
+  title: "SynViz — Verilog Syncode Visualizer",
   description:
-    "Interactive research platform for visualizing Qwen2.5-Coder token-level generation with Syncode C-grammar constrained decoding and probability forensics.",
+    "Interactive visualization of grammar-constrained Verilog generation using SynCode. Inspect token-level distributions, allowed grammar continuations, filtered invalid tokens, and final Verilog output.",
 };
 
 export default function RootLayout({

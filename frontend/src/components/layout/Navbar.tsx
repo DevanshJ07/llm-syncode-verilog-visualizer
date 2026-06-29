@@ -14,7 +14,7 @@ export function Navbar() {
             SynViz
           </span>
           <span className="hidden text-sm text-[#8b949e] sm:inline">
-            LLM Syncode Visualizer
+            Verilog Syncode Visualizer
           </span>
         </Link>
 

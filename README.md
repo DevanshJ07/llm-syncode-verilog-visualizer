@@ -1,7 +1,9 @@
-# SynViz — LLM Syncode Visualizer
+# SynViz — Verilog Syncode Visualizer
 
-An interactive research platform for visualizing token-level generation of **Llama 3B**
-with and without **Syncode** constrained decoding for C code generation.
+Interactive visualization of grammar-constrained Verilog generation using SynCode.
+
+An interactive research platform for visualizing token-level generation of **Qwen2.5-Coder**
+with and without **Syncode** constrained decoding for Verilog code generation.
 
 ---
 
