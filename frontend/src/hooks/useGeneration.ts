@@ -61,6 +61,16 @@ export function useGeneration(): UseGenerationReturn {
         constraint_applied: response.constraint_applied ?? false,
         fallback_occurred: response.fallback_occurred ?? false,
         syncode_error: response.syncode_error ?? "",
+        // Parse tree — built server-side from the same grammar as final validation.
+        parse_tree_available: response.parse_tree_available ?? false,
+        parse_tree_text: response.parse_tree_text ?? "",
+        parse_tree_error_type: response.parse_tree_error_type ?? "",
+        parse_tree_error_message: response.parse_tree_error_message ?? "",
+        parse_tree_error_line: response.parse_tree_error_line ?? 0,
+        parse_tree_error_column: response.parse_tree_error_column ?? 0,
+        parse_tree_unexpected_token: response.parse_tree_unexpected_token ?? "",
+        parse_tree_expected_terminals: response.parse_tree_expected_terminals ?? [],
+        parse_tree_previous_token: response.parse_tree_previous_token ?? "",
       };
 
       // Final client-side guard — never show visualization with empty trace.

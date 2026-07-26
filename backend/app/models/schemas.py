@@ -50,6 +50,19 @@ class MaskedTokenEntry(BaseModel):
     raw_prob: float     # softmax probability BEFORE Syncode masking
 
 
+class TopMaskedTokenEntry(BaseModel):
+    """
+    One of the highest-probability tokens masked by SynCode at a step.
+
+    Sorted server-side by pre-mask (raw) probability — post-mask prob is zero.
+    Limited to top 50 per step to keep payloads small.
+    """
+    token: str
+    token_id: int
+    pre_mask_prob: float
+    status: str = "masked by SynCode"
+
+
 class DecodingStep(BaseModel):
     """
     Full snapshot of one autoregressive decoding step.
@@ -84,6 +97,8 @@ class DecodingStep(BaseModel):
     top_tokens_before_syncode: list[TokenCandidate] = Field(default_factory=list)
     # Rejected tokens — full objects with raw_prob for visualisation
     masked_tokens: list[MaskedTokenEntry] = Field(default_factory=list)
+    # Top 50 masked tokens by pre-mask probability (full vocab scan, server-side)
+    top_masked_tokens: list[TopMaskedTokenEntry] = Field(default_factory=list)
     # Top-k from the constrained (post-mask) distribution
     valid_tokens_after_syncode: list[TokenCandidate] = Field(default_factory=list)
     entropy_after: Optional[float] = None
@@ -215,6 +230,17 @@ class ExperimentResult(BaseModel):
     fallback_occurred: bool = False
     syncode_error: str = ""
 
+    # --- Parse tree (built from final output using same grammar as validation) ---
+    parse_tree_available: bool = False
+    parse_tree_text: str = ""
+    parse_tree_error_type: str = ""
+    parse_tree_error_message: str = ""
+    parse_tree_error_line: int = 0
+    parse_tree_error_column: int = 0
+    parse_tree_unexpected_token: str = ""
+    parse_tree_expected_terminals: list[str] = Field(default_factory=list)
+    parse_tree_previous_token: str = ""
+
 
 # ---------------------------------------------------------------------------
 # API request / response schemas
@@ -225,7 +251,7 @@ class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=4096)
     use_syncode: bool = False
     top_k: int = Field(default=20, ge=1, le=200)
-    max_new_tokens: int = Field(default=64, ge=1, le=512)
+    max_new_tokens: int = Field(default=120, ge=1, le=512)
     temperature: float = Field(default=0.8, ge=0.01, le=2.0)
     # Sampling parameters — enable richer, less deterministic generation so
     # Syncode constraint effects are clearly visible in the decoding trace.
@@ -275,6 +301,17 @@ class GenerateResponse(BaseModel):
     constraint_applied: bool = False
     fallback_occurred: bool = False
     syncode_error: str = ""
+
+    # --- Parse tree (built from final output using same grammar as validation) ---
+    parse_tree_available: bool = False
+    parse_tree_text: str = ""
+    parse_tree_error_type: str = ""
+    parse_tree_error_message: str = ""
+    parse_tree_error_line: int = 0
+    parse_tree_error_column: int = 0
+    parse_tree_unexpected_token: str = ""
+    parse_tree_expected_terminals: list[str] = Field(default_factory=list)
+    parse_tree_previous_token: str = ""
 
     # --- Full decoding trace ---
     # One DecodingStep per generated token.  Each step contains:

@@ -15,6 +15,9 @@ import type {
 const BASE = "/api";
 const DEBUG_API = process.env.NODE_ENV === "development";
 
+/** Generation can run many minutes on CPU — do not abort early. */
+const GENERATE_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
+
 /** Parse FastAPI error bodies into a human-readable string. */
 export function formatApiError(status: number, body: string): string {
   try {
@@ -44,15 +47,41 @@ export function formatApiError(status: number, body: string): string {
   return `API ${status}: ${body.slice(0, 500)}`;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  options?: { timeoutMs?: number }
+): Promise<T> {
   if (DEBUG_API) {
     console.debug("[API request]", init?.method ?? "GET", path);
   }
 
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
+  const timeoutMs = options?.timeoutMs;
+  const controller = timeoutMs ? new AbortController() : undefined;
+  const timer =
+    timeoutMs && controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      ...init,
+      signal: controller?.signal ?? init?.signal,
+    });
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        "Request timed out — generation may still be running on the backend. " +
+          "Wait and refresh, or reduce max_new_tokens."
+      );
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   const bodyText = await res.text();
 
@@ -130,10 +159,14 @@ export async function postGenerate(
       max_new_tokens: payload.max_new_tokens,
     });
   }
-  const response = await request<GenerateResponse>("/generate", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  const response = await request<GenerateResponse>(
+    "/generate",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    { timeoutMs: GENERATE_CLIENT_TIMEOUT_MS }
+  );
   assertValidGenerateResponse(response);
   if (DEBUG_API) {
     console.debug("[API postGenerate] validated", {

@@ -14,6 +14,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { GenerationSettings } from "@/components/prompt/GenerationSettings";
+import { DEFAULT_MAX_NEW_TOKENS } from "@/lib/generationDefaults";
 import type { GenerateRequest } from "@/types/decoding";
 
 interface Props {
@@ -92,7 +93,7 @@ export function PromptForm({ onSubmit, isLoading, error }: Props) {
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<Omit<GenerateRequest, "prompt" | "use_syncode">>({
     top_k: 20,
-    max_new_tokens: 64,
+    max_new_tokens: DEFAULT_MAX_NEW_TOKENS,
     temperature: 1.0,
   });
 

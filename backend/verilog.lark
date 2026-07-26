@@ -1,3 +1,4 @@
+// 1. Source Text
 start: description*
 
 ?description: module
@@ -15,71 +16,77 @@ list_of_ports: "(" port ("," port)* ")"
             | module_instantiation
             | continuous_assign
 
+// 2. Declarations
 input_declaration: "input" list_of_variables ";"
 output_declaration: "output" list_of_variables ";"
 net_declaration: "wire" list_of_variables ";"
-
-list_of_variables: IDENTIFIER ("," IDENTIFIER)*
-
 continuous_assign: "assign" list_of_assignments ";"
-list_of_assignments: net_assignment ("," net_assignment)*
-net_assignment: IDENTIFIER "=" expression
+list_of_variables: IDENTIFIER ("," IDENTIFIER)*
+list_of_assignments: assignment ("," assignment)*
 
+// 3. Primitive Instances
+// These are merged with module instantiations
+
+// 4. Module Instantiations
 module_instantiation: name_of_module module_instance ("," module_instance)* ";"
-module_instance: IDENTIFIER? "(" list_of_module_connections? ")"
-
-list_of_module_connections: ordered_port_connection ("," ordered_port_connection)*
+module_instance: name_of_instance "(" list_of_module_connections ")"
+?name_of_instance: IDENTIFIER
+list_of_module_connections: module_port_connection ("," module_port_connection)*
                           | named_port_connection ("," named_port_connection)*
+module_port_connection: expression
+named_port_connection: "." IDENTIFIER "(" expression ")"
 
-ordered_port_connection: expression?
-named_port_connection: "." IDENTIFIER "(" expression? ")"
+// 5. Behavioral Statements
+assignment: lvalue "=" expression
 
-?expression: ternary
+// 6. Specify Section
 
-?ternary: or
-        | or "?" or ":" or
-
+// 7. Expressions
+?lvalue: identifier
+expression: condition
+?constant_value: constant_zero
+               | constant_one
+               | constant_x
+constant_zero: "1'b0"
+             | "1'h0"
+constant_one: "1'b1"
+            | "1'h1"
+constant_x: "1'bx"
+          | "1'hx"
+?condition: or
+           | ternary
+?ternary: or "?" or ":" or
 ?or: xor
    | or_gate
-
 or_gate: or "|" xor
-
 ?xor: and
     | xor_gate
     | xnor_gate
-
 xor_gate: xor "^" and
 xnor_gate: xor "~^" and
          | xor "^~" and
-
 ?and: unary
     | and_gate
-
 and_gate: and "&" unary
-
 ?unary: primary
-      | "!" unary
-      | "~" unary
-
+      | not_gate
+not_gate: ("!" | "~") primary
 ?primary: IDENTIFIER
-        | constant
-        | "(" expression ")"
+        | constant_value
+        | "(" or ")"
+?identifier: IDENTIFIER
 
-constant: "1'b0"
-        | "1'h0"
-        | "1'b1"
-        | "1'h1"
-        | "1'bx"
-        | "1'hx"
+// 8. General
+IDENTIFIER: CNAME
+          | ESCAPED_IDENTIFIER
+ESCAPED_IDENTIFIER: /\\([^\s]+)/
+COMMENT: "//" /[^\n]*/ NEWLINE
+NEWLINE: "\n"
 
-IDENTIFIER: /\\([^\\s]+)|[a-zA-Z_][a-zA-Z0-9_]*/
-
-WS: /[ \t\r\n]+/
-COMMENT: /\/\/[^\n]*/
-NEWLINE: /\n/
-MULTILINE_COMMENT: /\/\*[^*]*\*\//
+%import common.CNAME
+%import common.ESCAPED_STRING
+%import common.WS
 
 %ignore WS
 %ignore COMMENT
 %ignore NEWLINE
-%ignore MULTILINE_COMMENT

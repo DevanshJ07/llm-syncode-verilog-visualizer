@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Qwen2.5-Coder-1.5B-Instruct — CPU-compatible, ≈ 3 GB RAM in fp32.
     model_name: str = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
     device: str = "cpu"    # "cpu" | "cuda" | "mps"
-    max_new_tokens: int = 64
+    max_new_tokens: int = 120
     default_top_k: int = 20
 
     # Storage — experiments are stored as JSON files under this directory

@@ -34,6 +34,14 @@ export interface MaskedTokenEntry {
   raw_prob: number;
 }
 
+/** Top masked tokens by pre-mask probability (server-side, max 50 per step). */
+export interface TopMaskedTokenEntry {
+  token: string;
+  token_id: number;
+  pre_mask_prob: number;
+  status: string;
+}
+
 export interface DecodingStep {
   step: number;
   /** Decoded text generated before this step (context fed into the model). */
@@ -54,6 +62,8 @@ export interface DecodingStep {
   top_tokens_before_syncode: TokenCandidate[];
   /** Rejected tokens with their raw probabilities (Syncode mode only). */
   masked_tokens: MaskedTokenEntry[];
+  /** Top 50 masked tokens sorted by pre-mask probability (full vocab scan). */
+  top_masked_tokens?: TopMaskedTokenEntry[];
   /** Top-k from the constrained (post-mask) distribution. */
   valid_tokens_after_syncode: TokenCandidate[];
   entropy_after: number | null;
@@ -125,6 +135,17 @@ export interface ExperimentResult {
   constraint_applied?: boolean;
   fallback_occurred?: boolean;
   syncode_error?: string;
+
+  // --- Parse tree (built from final output using same grammar as validation) ---
+  parse_tree_available?: boolean;
+  parse_tree_text?: string;
+  parse_tree_error_type?: string;
+  parse_tree_error_message?: string;
+  parse_tree_error_line?: number;
+  parse_tree_error_column?: number;
+  parse_tree_unexpected_token?: string;
+  parse_tree_expected_terminals?: string[];
+  parse_tree_previous_token?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +192,16 @@ export interface GenerateResponse {
   constraint_applied?: boolean;
   fallback_occurred?: boolean;
   syncode_error?: string;
+  // parse tree
+  parse_tree_available?: boolean;
+  parse_tree_text?: string;
+  parse_tree_error_type?: string;
+  parse_tree_error_message?: string;
+  parse_tree_error_line?: number;
+  parse_tree_error_column?: number;
+  parse_tree_unexpected_token?: string;
+  parse_tree_expected_terminals?: string[];
+  parse_tree_previous_token?: string;
   // full decoding trace — one entry per generated token
   steps: DecodingStep[];
 }

@@ -12,6 +12,7 @@ from app.services.experiment_store import store
 from app.services.generation_validation import GenerationFailedError
 from app.services.llm_service import llm_service
 from app.services.verilog_validation import (
+    build_parse_tree,
     compute_constraint_status,
     validate_verilog_output,
 )
@@ -166,6 +167,14 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         validation.final_parse_error[:200] if validation.final_parse_error else "",
     )
 
+    # Build parse tree from final output using the same grammar/parser.
+    parse_tree = build_parse_tree(clean_text)
+    log.info(
+        "[API /generate] parse_tree_available=%s error_type=%r",
+        parse_tree.parse_tree_available,
+        parse_tree.parse_tree_error_type or "none",
+    )
+
     # Aggregate Syncode stats across all steps for the evidence panel.
     syncode_active_steps = sum(1 for s in steps if s.syncode_active)
     syncode_fallback_steps = sum(1 for s in steps if s.fallback_used)
@@ -213,6 +222,15 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     experiment.constraint_applied = evidence.constraint_applied
     experiment.fallback_occurred = evidence.fallback_occurred
     experiment.syncode_error = evidence.syncode_error
+    experiment.parse_tree_available = parse_tree.parse_tree_available
+    experiment.parse_tree_text = parse_tree.parse_tree_text
+    experiment.parse_tree_error_type = parse_tree.parse_tree_error_type
+    experiment.parse_tree_error_message = parse_tree.parse_tree_error_message
+    experiment.parse_tree_error_line = parse_tree.parse_tree_error_line
+    experiment.parse_tree_error_column = parse_tree.parse_tree_error_column
+    experiment.parse_tree_unexpected_token = parse_tree.parse_tree_unexpected_token
+    experiment.parse_tree_expected_terminals = parse_tree.parse_tree_expected_terminals
+    experiment.parse_tree_previous_token = parse_tree.parse_tree_previous_token
 
     try:
         store.save(experiment)
@@ -263,6 +281,15 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         constraint_applied=evidence.constraint_applied,
         fallback_occurred=evidence.fallback_occurred,
         syncode_error=evidence.syncode_error,
+        parse_tree_available=parse_tree.parse_tree_available,
+        parse_tree_text=parse_tree.parse_tree_text,
+        parse_tree_error_type=parse_tree.parse_tree_error_type,
+        parse_tree_error_message=parse_tree.parse_tree_error_message,
+        parse_tree_error_line=parse_tree.parse_tree_error_line,
+        parse_tree_error_column=parse_tree.parse_tree_error_column,
+        parse_tree_unexpected_token=parse_tree.parse_tree_unexpected_token,
+        parse_tree_expected_terminals=parse_tree.parse_tree_expected_terminals,
+        parse_tree_previous_token=parse_tree.parse_tree_previous_token,
         steps=steps,
     )
 

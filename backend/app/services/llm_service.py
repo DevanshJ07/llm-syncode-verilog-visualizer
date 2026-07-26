@@ -37,7 +37,13 @@ import torch
 import torch.nn.functional as F
 
 from app.core.config import settings
-from app.models.schemas import DecodingStep, MaskedTokenEntry, TokenCandidate, TopToken
+from app.models.schemas import (
+    DecodingStep,
+    MaskedTokenEntry,
+    TokenCandidate,
+    TopMaskedTokenEntry,
+    TopToken,
+)
 from app.services.generation_validation import (
     GenerationFailedError,
     validate_generation_result,
@@ -53,6 +59,9 @@ _executor = ThreadPoolExecutor(max_workers=1)
 
 # Consecutive whitespace tokens before graceful stop.
 _WHITESPACE_STALL_THRESHOLD: int = 10
+
+# Max masked tokens sent per step (sorted by pre-mask prob server-side).
+_TOP_MASKED_TOKENS_LIMIT: int = 50
 
 # ---------------------------------------------------------------------------
 # Debug trace buffer — stores the last completed generation's step-level
@@ -129,6 +138,48 @@ def _nucleus_sample(probs: torch.Tensor, top_p: float) -> int:
 def _is_whitespace_token(token_str: str) -> bool:
     """Return True when a decoded token contains only whitespace/newline chars."""
     return bool(token_str) and not token_str.strip()
+
+
+def _compute_top_masked_tokens(
+    probs_raw: torch.Tensor,
+    masked_flag: torch.Tensor,
+    tokenizer: "PreTrainedTokenizerBase",
+    limit: int = _TOP_MASKED_TOKENS_LIMIT,
+) -> list[TopMaskedTokenEntry]:
+    """
+    Return up to *limit* grammar-masked tokens sorted by pre-mask probability.
+
+    Scans the full vocabulary masked set (not just top-k) but only serialises
+    the highest-probability masked tokens to the frontend.
+    """
+    if masked_flag is None or not bool(masked_flag.any()):
+        return []
+
+    masked_ids = masked_flag.nonzero(as_tuple=True)[0]
+    if masked_ids.numel() == 0:
+        return []
+
+    masked_probs = probs_raw[masked_ids]
+    k = min(int(limit), int(masked_ids.numel()))
+    top_probs, local_idx = torch.topk(masked_probs, k=k)
+    top_ids = masked_ids[local_idx]
+
+    entries: list[TopMaskedTokenEntry] = []
+    for i in range(k):
+        tid = int(top_ids[i].item())
+        entries.append(
+            TopMaskedTokenEntry(
+                token=tokenizer.decode(
+                    [tid],
+                    skip_special_tokens=False,
+                    clean_up_tokenization_spaces=False,
+                ),
+                token_id=tid,
+                pre_mask_prob=float(top_probs[i].item()),
+                status="masked by SynCode",
+            )
+        )
+    return entries
 
 
 # ---------------------------------------------------------------------------
@@ -1050,6 +1101,13 @@ class LLMService:
                 if masked_flag[int(topk_raw_ids[i])]
             ]
 
+            # top_masked_tokens — top 50 masked across full vocab by pre-mask prob.
+            top_masked_list: list[TopMaskedTokenEntry] = _compute_top_masked_tokens(
+                probs_raw,
+                masked_flag,
+                self._tokenizer,  # type: ignore[arg-type]
+            )
+
             # valid_tokens_after_syncode — top-k AFTER masking.
             # Source: probs_masked = softmax(masked_logits / T)
             # IMPORTANT: probabilities here are from the CONSTRAINED distribution,
@@ -1086,6 +1144,7 @@ class LLMService:
             top_tokens_before_syncode = []
             valid_tokens_after_syncode = []
             masked_in_topk = []
+            top_masked_list = []
             num_masked_total = 0
             vocab_sz = int(logits.size(0))
             valid_cnt = vocab_sz
@@ -1195,6 +1254,7 @@ class LLMService:
             # Syncode fields — empty in raw mode, populated in Syncode mode
             top_tokens_before_syncode=top_tokens_before_syncode,
             masked_tokens=masked_in_topk,
+            top_masked_tokens=top_masked_list,
             valid_tokens_after_syncode=valid_tokens_after_syncode,
             entropy_after=round(entropy_after, 4) if entropy_after is not None else None,
             num_masked=num_masked_total,

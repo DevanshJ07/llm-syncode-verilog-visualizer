@@ -19,6 +19,10 @@
  * ├──────────────────────┴──────────────────────────────┤
  * │  StepPlayer  (slider + transport + speed)           │
  * ├─────────────────────────────────────────────────────┤
+ * │  TopMaskedTokensPanel  (top 50 masked by pre-mask p)│
+ * ├─────────────────────────────────────────────────────┤
+ * │  StepAnalysisExportPanel  (copy / download report)  │
+ * ├─────────────────────────────────────────────────────┤
  * │  EntropyChart  (line chart across all steps)        │
  * ├─────────────────────────────────────────────────────┤
  * │  DecodingTimeline  (all steps, expandable cards)    │
@@ -34,12 +38,16 @@ import { StepPlayer } from "@/components/visualization/StepPlayer";
 import { EntropyChart } from "@/components/visualization/EntropyChart";
 import { DecodingTimeline } from "@/components/visualization/DecodingTimeline";
 import { SyncodeEvidencePanel } from "@/components/visualization/SyncodeEvidencePanel";
+import { TopMaskedTokensPanel } from "@/components/visualization/TopMaskedTokensPanel";
+import { StepAnalysisExportPanel } from "@/components/visualization/StepAnalysisExportPanel";
+import { ParserTreeExportPanel } from "@/components/visualization/ParserTreeExportPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Card } from "@/components/ui/Card";
 import { useGeneration } from "@/hooks/useGeneration";
 import { formatPct } from "@/lib/utils";
+import { DEFAULT_MAX_NEW_TOKENS } from "@/lib/generationDefaults";
 import type { GenerateRequest } from "@/types/decoding";
 
 export default function HomePage() {
@@ -171,6 +179,8 @@ export default function HomePage() {
         <p className="max-w-sm text-center text-xs text-[#484f58]">
           Qwen2.5-Coder-1.5B-Instruct is generating Verilog on CPU.
           First run downloads weights (~3 GB); Syncode Verilog DFA build adds ~30 s once.
+          Long runs (up to {DEFAULT_MAX_NEW_TOKENS} tokens) may take several minutes — please wait; the UI will not
+          error until the backend finishes or the 10-minute limit is reached.
         </p>
         <Button variant="ghost" size="sm" onClick={reset}>
           Cancel
@@ -307,6 +317,19 @@ export default function HomePage() {
         playIntervalMs={playIntervalMs}
         onIntervalChange={setPlayIntervalMs}
       />
+
+      {/* ── Top masked tokens (current step) ───────────────────────────── */}
+      <TopMaskedTokensPanel step={activeStep} mode={experiment.mode} />
+
+      {/* ── Step analysis export ───────────────────────────────────────── */}
+      <StepAnalysisExportPanel
+        experiment={experiment}
+        step={activeStep}
+        stepIndex={currentStep}
+      />
+
+      {/* ── Parser tree export ─────────────────────────────────────────── */}
+      <ParserTreeExportPanel experiment={experiment} />
 
       {/* ── Entropy chart ─────────────────────────────────────────────── */}
       <div className="rounded-md border border-surface-border bg-surface-raised px-3 py-2">

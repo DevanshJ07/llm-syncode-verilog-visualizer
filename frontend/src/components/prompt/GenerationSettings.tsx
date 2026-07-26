@@ -6,6 +6,7 @@
  */
 
 import type { GenerateRequest } from "@/types/decoding";
+import { DEFAULT_MAX_NEW_TOKENS } from "@/lib/generationDefaults";
 
 type SettingsValue = Omit<GenerateRequest, "prompt" | "use_syncode">;
 
@@ -73,6 +74,7 @@ export function GenerationSettings({ value, onChange }: Props) {
         max={512}
         step={16}
         onChange={(v) => set("max_new_tokens", v)}
+        hint={`Default ${DEFAULT_MAX_NEW_TOKENS}, adjustable up to 512`}
       />
       <NumberField
         label="Temperature"

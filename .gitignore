@@ -38,3 +38,7 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 *.swp
+backend/.venv311/
+backend/__pycache__/
+backend/.pytest_cache/
+frontend/tsconfig.tsbuildinfo
