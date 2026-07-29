@@ -13,6 +13,52 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
+# Parser failure context — nested schema
+# ---------------------------------------------------------------------------
+
+class ParserFailureContextSchema(BaseModel):
+    """
+    Rich context around a Lark parse failure.
+
+    Built by ``build_parse_tree`` when the final output is invalid.
+    Carries a source excerpt, caret marker, and heuristic interpretations
+    so the frontend can display useful research diagnostics without a tree.
+    """
+    available: bool = False
+    prefix_before_error: str = ""          # numbered source lines near failure
+    error_line_text: str = ""              # the exact source line
+    caret_line: str = ""                   # spaces + "^" pointing at error column
+    expected_terminals: list[str] = Field(default_factory=list)
+    likely_parser_state_summary: str = ""  # concise LALR state description
+    likely_interpretation: str = ""        # heuristic natural-language explanation
+
+
+class IncrementalParserStateSchema(BaseModel):
+    """
+    Per-step incremental parser snapshot for research visualization.
+
+    Built post-generation from the prefix ``context + selected_token`` using
+    the same Verilog Lark grammar as final validation.  Does not affect
+    generation or SynCode masking.
+    """
+    available: bool = False
+    prefix_output: str = ""
+    # valid_prefix | invalid_prefix | complete_parse | unavailable
+    prefix_parse_status: str = ""
+    parser_accepts_end: bool = False
+    expected_next_terminals: list[str] = Field(default_factory=list)
+    accepted_next_terminals: list[str] = Field(default_factory=list)
+    likely_grammar_context: str = ""
+    likely_grammar_path: str = ""
+    selected_token_interpretation: str = ""
+    likely_parser_interpretation: str = ""
+    partial_parse_view: str = ""
+    parse_tree_text: str = ""              # populated only for complete_parse
+    parser_error_type: str = ""
+    parser_error_message: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Core decoding data model (matches the JSON logging format in PROJECT_SPEC)
 # ---------------------------------------------------------------------------
 
@@ -183,6 +229,12 @@ class DecodingStep(BaseModel):
     selected_rank_raw: int = -1
     selected_rank_constrained: int = -1
 
+    # --- Incremental parser state (post-generation analysis) ---------------
+    # Lark interactive-parser snapshot of context+selected_token prefix.
+    incremental_parser_state: IncrementalParserStateSchema = Field(
+        default_factory=IncrementalParserStateSchema
+    )
+
 
 # ---------------------------------------------------------------------------
 # Experiment container
@@ -229,6 +281,29 @@ class ExperimentResult(BaseModel):
     constraint_applied: bool = False  # True only when full constraint + valid output
     fallback_occurred: bool = False
     syncode_error: str = ""
+    lark_grammar_loaded: bool = False
+    syncode_mask_store_loaded: bool = False
+    constraint_active_during_generation: bool = False
+    raw_unconstrained_generation_used: bool = False
+    unconstrained_reason: str = ""
+    syncode_init_error: str = ""
+
+    # --- Fail-fast / raw-fallback fields ----------------------------------
+    # syncode_stopped_reason: why generation stopped in syncode mode.
+    #   "parse_complete"                 — valid module; non-EOS continuation rejected
+    #   "eos_parse_complete"             — EOS selected while Lark $END was accepted
+    #   "max_tokens_incomplete"          — hit absolute budget still parse-invalid
+    #   "syncode_parser_error_at_step_N" — fail-fast (allow_syncode_fallback=False)
+    #   "eos_at_step_N"                  — EOS while prefix was not yet valid
+    #   "whitespace_stall_at_step_N"     — whitespace stall guard fired
+    #   "" (empty)                       — raw mode or unknown
+    syncode_stopped_reason: str = ""
+    raw_fallback_prevented: bool = False   # True when fail-fast stopped raw continuation
+    # True when model EOS was unmasked because Lark $END was accepted.
+    eos_allowed_at_completion: bool = False
+    # Token budgets for evidence panel (SynCode completion mode).
+    normal_max_tokens: int = 120
+    absolute_max_tokens: int = 200
 
     # --- Parse tree (built from final output using same grammar as validation) ---
     parse_tree_available: bool = False
@@ -240,6 +315,10 @@ class ExperimentResult(BaseModel):
     parse_tree_unexpected_token: str = ""
     parse_tree_expected_terminals: list[str] = Field(default_factory=list)
     parse_tree_previous_token: str = ""
+    # Rich diagnostics shown when parsing fails (tree unavailable).
+    parser_failure_context: ParserFailureContextSchema = Field(
+        default_factory=ParserFailureContextSchema
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +380,19 @@ class GenerateResponse(BaseModel):
     constraint_applied: bool = False
     fallback_occurred: bool = False
     syncode_error: str = ""
+    lark_grammar_loaded: bool = False
+    syncode_mask_store_loaded: bool = False
+    constraint_active_during_generation: bool = False
+    raw_unconstrained_generation_used: bool = False
+    unconstrained_reason: str = ""
+    syncode_init_error: str = ""
+
+    # --- Fail-fast / raw-fallback fields ----------------------------------
+    syncode_stopped_reason: str = ""
+    raw_fallback_prevented: bool = False
+    eos_allowed_at_completion: bool = False
+    normal_max_tokens: int = 120
+    absolute_max_tokens: int = 200
 
     # --- Parse tree (built from final output using same grammar as validation) ---
     parse_tree_available: bool = False
@@ -312,6 +404,9 @@ class GenerateResponse(BaseModel):
     parse_tree_unexpected_token: str = ""
     parse_tree_expected_terminals: list[str] = Field(default_factory=list)
     parse_tree_previous_token: str = ""
+    parser_failure_context: ParserFailureContextSchema = Field(
+        default_factory=ParserFailureContextSchema
+    )
 
     # --- Full decoding trace ---
     # One DecodingStep per generated token.  Each step contains:

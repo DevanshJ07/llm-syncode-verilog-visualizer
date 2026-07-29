@@ -14,11 +14,13 @@ export const dynamic = "force-dynamic";
 /** Allow long CPU generation (Vercel / compatible hosts). */
 export const maxDuration = 600;
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
 /** 10 minutes — matches expected worst-case CPU + Syncode DFA run. */
 const GENERATE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
+  console.log("[proxy /api/generate] request received →", BACKEND_URL);
+
   let body: string;
   try {
     body = await req.text();
@@ -39,6 +41,8 @@ export async function POST(req: NextRequest) {
       body,
       signal: controller.signal,
     });
+
+    console.log("[proxy /api/generate] backend status:", res.status);
 
     const text = await res.text();
     return new NextResponse(text, {

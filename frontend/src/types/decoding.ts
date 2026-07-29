@@ -4,6 +4,30 @@
  */
 
 // ---------------------------------------------------------------------------
+// Parser failure context
+// ---------------------------------------------------------------------------
+
+/**
+ * Rich diagnostics around a Lark parse failure.
+ * Populated when parse_tree_available === false and the backend successfully
+ * extracted failure context from the exception.
+ */
+export interface ParserFailureContext {
+  available: boolean;
+  /** Numbered source lines ending at (and including) the error line. */
+  prefix_before_error: string;
+  /** The exact source line where the error occurred. */
+  error_line_text: string;
+  /** Spaces followed by "^" aligned to the error column. */
+  caret_line: string;
+  expected_terminals: string[];
+  /** Concise LALR state description including research note when relevant. */
+  likely_parser_state_summary: string;
+  /** Heuristic natural-language explanation of the failure. */
+  likely_interpretation: string;
+}
+
+// ---------------------------------------------------------------------------
 // Core decoding data
 // ---------------------------------------------------------------------------
 
@@ -102,6 +126,28 @@ export interface DecodingStep {
   whitespace_tokens_masked: boolean;
   selected_rank_raw: number;
   selected_rank_constrained: number;
+
+  /** Post-generation Lark incremental parser snapshot for this step prefix. */
+  incremental_parser_state?: IncrementalParserState;
+}
+
+/** Per-step incremental parser state from the tested Verilog grammar. */
+export interface IncrementalParserState {
+  available: boolean;
+  prefix_output: string;
+  /** valid_prefix | invalid_prefix | complete_parse | unavailable */
+  prefix_parse_status: string;
+  parser_accepts_end: boolean;
+  expected_next_terminals: string[];
+  accepted_next_terminals: string[];
+  likely_grammar_context: string;
+  likely_grammar_path: string;
+  selected_token_interpretation: string;
+  likely_parser_interpretation: string;
+  partial_parse_view: string;
+  parse_tree_text: string;
+  parser_error_type: string;
+  parser_error_message: string;
 }
 
 export interface ExperimentResult {
@@ -135,6 +181,24 @@ export interface ExperimentResult {
   constraint_applied?: boolean;
   fallback_occurred?: boolean;
   syncode_error?: string;
+  lark_grammar_loaded?: boolean;
+  syncode_mask_store_loaded?: boolean;
+  constraint_active_during_generation?: boolean;
+  raw_unconstrained_generation_used?: boolean;
+  unconstrained_reason?: string;
+  syncode_init_error?: string;
+
+  // --- Fail-fast / raw-fallback fields ---
+  /** Why generation stopped in syncode mode, e.g. "parse_complete", "eos_parse_complete" */
+  syncode_stopped_reason?: string;
+  /** True when fail-fast prevented raw continuation after a parser error */
+  raw_fallback_prevented?: boolean;
+  /** True when model EOS was unmasked because Lark $END was accepted. */
+  eos_allowed_at_completion?: boolean;
+  /** Caller-requested / display limit (typically 120). */
+  normal_max_tokens?: number;
+  /** Hard cap including SynCode completion budget (typically 200). */
+  absolute_max_tokens?: number;
 
   // --- Parse tree (built from final output using same grammar as validation) ---
   parse_tree_available?: boolean;
@@ -146,6 +210,8 @@ export interface ExperimentResult {
   parse_tree_unexpected_token?: string;
   parse_tree_expected_terminals?: string[];
   parse_tree_previous_token?: string;
+  /** Rich failure diagnostics — populated when parse_tree_available is false. */
+  parser_failure_context?: ParserFailureContext;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +258,18 @@ export interface GenerateResponse {
   constraint_applied?: boolean;
   fallback_occurred?: boolean;
   syncode_error?: string;
+  lark_grammar_loaded?: boolean;
+  syncode_mask_store_loaded?: boolean;
+  constraint_active_during_generation?: boolean;
+  raw_unconstrained_generation_used?: boolean;
+  unconstrained_reason?: string;
+  syncode_init_error?: string;
+  // fail-fast / raw-fallback
+  syncode_stopped_reason?: string;
+  raw_fallback_prevented?: boolean;
+  eos_allowed_at_completion?: boolean;
+  normal_max_tokens?: number;
+  absolute_max_tokens?: number;
   // parse tree
   parse_tree_available?: boolean;
   parse_tree_text?: string;
@@ -202,6 +280,7 @@ export interface GenerateResponse {
   parse_tree_unexpected_token?: string;
   parse_tree_expected_terminals?: string[];
   parse_tree_previous_token?: string;
+  parser_failure_context?: ParserFailureContext;
   // full decoding trace — one entry per generated token
   steps: DecodingStep[];
 }

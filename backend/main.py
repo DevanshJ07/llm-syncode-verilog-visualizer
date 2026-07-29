@@ -22,18 +22,15 @@ from app.api.routes import generate as generate_router
 from app.api.routes import experiments as experiments_router
 from app.api.routes import debug as debug_router
 from app.core.config import settings
+from app.services.grammar_diagnostics import log_grammar_diagnostics, run_grammar_diagnostics
 from app.services.llm_service import llm_service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle hook."""
-    # Optional eager load: uncomment to pre-warm the model at server start.
-    # This adds ~10-30 s to startup but eliminates cold-start on first request.
-    #
-    # import asyncio
-    # loop = asyncio.get_event_loop()
-    # await loop.run_in_executor(None, llm_service.load_model)
+    diag = run_grammar_diagnostics(build_mask_store=False)
+    log_grammar_diagnostics(diag)
 
     print(f"[Startup] {settings.app_name} ready (model loads lazily on first request).")
     yield
@@ -67,6 +64,9 @@ app.add_middleware(
 app.include_router(generate_router.router, tags=["Generation"])
 app.include_router(experiments_router.router, tags=["Experiments"])
 app.include_router(debug_router.router, tags=["Debug"])
+
+# Backward-compatible alias: some clients proxy to /api/generate on the backend.
+app.include_router(generate_router.router, prefix="/api", tags=["Generation"])
 
 
 @app.get("/health", tags=["Meta"])

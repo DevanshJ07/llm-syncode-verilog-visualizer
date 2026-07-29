@@ -61,7 +61,14 @@ export function useGeneration(): UseGenerationReturn {
         constraint_applied: response.constraint_applied ?? false,
         fallback_occurred: response.fallback_occurred ?? false,
         syncode_error: response.syncode_error ?? "",
+        // Fail-fast / raw-fallback reason
+        syncode_stopped_reason: response.syncode_stopped_reason ?? "",
+        raw_fallback_prevented: response.raw_fallback_prevented ?? false,
+        eos_allowed_at_completion: response.eos_allowed_at_completion ?? false,
+        normal_max_tokens: response.normal_max_tokens ?? 120,
+        absolute_max_tokens: response.absolute_max_tokens ?? 200,
         // Parse tree — built server-side from the same grammar as final validation.
+        // parser_failure_context is a nested object; pass through as-is.
         parse_tree_available: response.parse_tree_available ?? false,
         parse_tree_text: response.parse_tree_text ?? "",
         parse_tree_error_type: response.parse_tree_error_type ?? "",
@@ -71,12 +78,17 @@ export function useGeneration(): UseGenerationReturn {
         parse_tree_unexpected_token: response.parse_tree_unexpected_token ?? "",
         parse_tree_expected_terminals: response.parse_tree_expected_terminals ?? [],
         parse_tree_previous_token: response.parse_tree_previous_token ?? "",
+        parser_failure_context: response.parser_failure_context,
       };
 
-      // Final client-side guard — never show visualization with empty trace.
-      if (result.steps.length === 0 || result.total_steps === 0) {
+      // Final client-side guard — never show visualization with a truly empty trace,
+      // UNLESS syncode fail-fast fired (0 steps is valid when the parser fails on
+      // the very first generated token).
+      const isSyncodeFastFail =
+        result.syncode_stopped_reason?.startsWith("syncode_parser_error") ?? false;
+      if ((result.steps.length === 0 || result.total_steps === 0) && !isSyncodeFastFail) {
         throw new Error(
-          "Backend returned HTTP 201 but decoding trace is empty. " +
+          "Backend returned HTTP 200 but decoding trace is empty. " +
             "This should not happen — check backend logs."
         );
       }

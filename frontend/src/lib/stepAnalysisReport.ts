@@ -2,6 +2,7 @@
  * Step analysis report formatting for SynCode decoding evidence export.
  */
 
+import { formatIncrementalParserBlock } from "@/lib/incrementalParserTraceReport";
 import { formatPct } from "@/lib/utils";
 import type { DecodingStep, ExperimentResult } from "@/types/decoding";
 
@@ -135,6 +136,10 @@ export function formatStepAnalysisBlock(
     formatTopMaskedTokensSection(step, mode),
     "",
   ];
+
+  if (step.incremental_parser_state?.available) {
+    lines.push(formatIncrementalParserBlock(step));
+  }
 
   return lines.join("\n");
 }

@@ -9,6 +9,10 @@ import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import {
+  downloadIncrementalParserTrace,
+  incrementalParserTraceFilename,
+} from "@/lib/incrementalParserTraceReport";
+import {
   downloadTextFile,
   formatFullRunReport,
   formatStepAnalysisBlock,
@@ -53,6 +57,10 @@ export function StepAnalysisExportPanel({
     downloadTextFile(content, fullRunReportFilename(experiment.experiment_id));
   }, [experiment]);
 
+  const handleDownloadIncremental = useCallback(() => {
+    downloadIncrementalParserTrace(experiment);
+  }, [experiment]);
+
   return (
     <section className="flex flex-col gap-2 rounded-md border border-surface-border bg-surface-raised px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -88,6 +96,9 @@ export function StepAnalysisExportPanel({
         <Button variant="secondary" size="sm" onClick={handleDownloadFull}>
           Download full run report (.txt)
         </Button>
+        <Button variant="secondary" size="sm" onClick={handleDownloadIncremental}>
+          Download incremental parser trace (.txt)
+        </Button>
       </div>
 
       <div className="max-h-48 overflow-auto rounded border border-[#30363d] bg-[#0d1117] p-2.5">
@@ -97,7 +108,9 @@ export function StepAnalysisExportPanel({
       </div>
 
       <p className="font-mono text-[10px] text-[#484f58]">
-        TXT filename: {fullRunReportFilename(experiment.experiment_id)}
+        Step report: {fullRunReportFilename(experiment.experiment_id)}
+        {" · "}parser trace:{" "}
+        {incrementalParserTraceFilename(experiment.experiment_id)}
         {" · "}player step index {stepIndex + 1}
       </p>
     </section>

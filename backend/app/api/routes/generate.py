@@ -7,13 +7,15 @@ import traceback
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.models.schemas import GenerateRequest, GenerateResponse
+from app.models.schemas import GenerateRequest, GenerateResponse, ParserFailureContextSchema
 from app.services.experiment_store import store
-from app.services.generation_validation import GenerationFailedError
+from app.services.generation_validation import GenerationFailedError, SyncodeUnavailableError
 from app.services.llm_service import llm_service
+from app.services.grammar_diagnostics import get_grammar_diagnostics
 from app.services.verilog_validation import (
     build_parse_tree,
     compute_constraint_status,
+    enrich_steps_with_incremental_parser_state,
     validate_verilog_output,
 )
 from app.core.config import settings
@@ -50,6 +52,20 @@ def _extract_verilog(text: str) -> str:
 # Error helper
 # ---------------------------------------------------------------------------
 
+def _http_500_from_syncode_unavailable(exc: SyncodeUnavailableError) -> HTTPException:
+    detail = exc.to_detail()
+    log.error(
+        "[GEN syncode unavailable] %s | detail=%s",
+        exc,
+        json.dumps({k: v for k, v in detail.items() if k != "init_traceback"}, default=str),
+        exc_info=True,
+    )
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=detail,
+    )
+
+
 def _http_500_from_generation_error(exc: GenerationFailedError) -> HTTPException:
     detail = exc.to_detail()
     log.error(
@@ -83,6 +99,13 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     """
     mode = "syncode" if request.use_syncode else "raw"
 
+    # Immediate stdout — must appear before model/SynCode load (can take minutes).
+    print("[generate] request received", flush=True)
+    print(f"[generate] backend_mode: {mode}", flush=True)
+    print("[generate] grammar: verilog", flush=True)
+    print(f"[generate] max_tokens: {request.max_new_tokens}", flush=True)
+    print(f"[generate] prompt length: {len(request.prompt)}", flush=True)
+
     log.info(
         "[API /generate request] mode=%s prompt_len=%d max_new_tokens=%d "
         "top_k=%d T=%.2f do_sample=%s use_syncode=%s",
@@ -102,7 +125,13 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     )
 
     try:
-        generated_text, steps = await llm_service.generate(
+        print("[generate] loading model...", flush=True)
+        (
+            generated_text,
+            steps,
+            early_termination,
+            eos_allowed_at_completion,
+        ) = await llm_service.generate(
             prompt=request.prompt,
             max_new_tokens=request.max_new_tokens,
             top_k=request.top_k,
@@ -112,9 +141,16 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             top_p=request.top_p,
             repetition_penalty=request.repetition_penalty,
         )
+        print("[generate] generation complete", flush=True)
+    except SyncodeUnavailableError as exc:
+        print(f"[generate] SynCode unavailable: {exc}", flush=True)
+        raise _http_500_from_syncode_unavailable(exc) from exc
     except GenerationFailedError as exc:
+        print(f"[generate] generation failed: {exc}", flush=True)
         raise _http_500_from_generation_error(exc) from exc
     except Exception as exc:
+        print(f"[generate] exception: {type(exc).__name__}: {exc}", flush=True)
+        traceback.print_exc()
         log.error(
             "[API /generate exception] %s: %s\n%s",
             type(exc).__name__,
@@ -130,8 +166,20 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             },
         ) from exc
 
+    # Fail-fast syncode termination is an expected, valid outcome — not an error.
+    is_syncode_fail_fast = early_termination.startswith("syncode_parser_error")
+
+    log.info(
+        "[API /generate] early_termination=%r is_syncode_fail_fast=%s steps=%d",
+        early_termination,
+        is_syncode_fail_fast,
+        len(steps),
+    )
+
     # Belt-and-suspenders validation at the route layer.
-    if len(steps) == 0:
+    # Skip for syncode fail-fast: 0 steps is legitimate when the parser fails
+    # on the very first generated token.
+    if len(steps) == 0 and not is_syncode_fail_fast:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -140,7 +188,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
                 "reasons": ["len(steps) == 0 at route boundary"],
             },
         )
-    if not generated_text or not generated_text.strip():
+    if (not generated_text or not generated_text.strip()) and not is_syncode_fail_fast:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -150,8 +198,57 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             },
         )
 
+    # Per-step incremental parser snapshots (analysis only — no effect on generation).
+    try:
+        enrich_steps_with_incremental_parser_state(steps)
+        log.info(
+            "[API /generate] incremental parser state enriched for %d steps",
+            len(steps),
+        )
+    except Exception as enrich_exc:
+        log.warning(
+            "[API /generate] incremental parser enrichment failed (non-fatal): %s",
+            enrich_exc,
+            exc_info=True,
+        )
+
+    # Derive a human-readable stopped reason for the evidence panel.
+    # Priority: explicit early_termination string from the generation loop.
+    syncode_stopped_reason: str = early_termination
+    # Normalise legacy max-token reasons to the research label.
+    if syncode_stopped_reason.startswith("max_new_tokens_reached_"):
+        syncode_stopped_reason = "max_tokens_incomplete"
+    if syncode_stopped_reason == "max_tokens":
+        syncode_stopped_reason = "max_tokens_incomplete"
+
+    # Token budgets exposed to the evidence panel.
+    normal_max_tokens = request.max_new_tokens
+    if mode == "syncode":
+        absolute_max_tokens = min(
+            normal_max_tokens + settings.completion_extra_tokens,
+            settings.absolute_max_tokens,
+        )
+    else:
+        absolute_max_tokens = normal_max_tokens
+
+    # raw_fallback_prevented = syncode was requested, fail-fast fired, no
+    # fallback steps were actually generated.
+    raw_fallback_prevented: bool = (
+        mode == "syncode"
+        and is_syncode_fail_fast
+        and not settings.allow_syncode_fallback
+    )
+
+    if is_syncode_fail_fast:
+        print(
+            f"[generation] stopping due to parser error, not continuing raw "
+            f"(allow_syncode_fallback={settings.allow_syncode_fallback})",
+            flush=True,
+        )
+
     # Post-process: strip markdown fences and extract module...endmodule block.
-    clean_text = _extract_verilog(generated_text)
+    # When fail-fast fires with 0 steps, generated_text may be empty; guard.
+    clean_text = _extract_verilog(generated_text) if generated_text.strip() else ""
     log.info(
         "[API /generate] Verilog extraction: raw_len=%d clean_len=%d",
         len(generated_text),
@@ -185,6 +282,14 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         llm_service._syncode is not None
         and getattr(llm_service._syncode, "available", False)
     )
+    grammar_diag = get_grammar_diagnostics()
+    syncode_init_error = ""
+    if llm_service._syncode is not None and not syncode_available:
+        syncode_init_error = (
+            llm_service._syncode.init_error
+            or grammar_diag.syncode_mask_store_error
+            or grammar_diag.syncode_grammar_error
+        )
 
     evidence = compute_constraint_status(
         mode=mode,
@@ -194,6 +299,9 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         syncode_fallback_steps=syncode_fallback_steps,
         final_parse_valid=validation.final_parse_valid,
         final_parse_error=validation.final_parse_error,
+        lark_grammar_loaded=grammar_diag.lark_grammar_loaded,
+        syncode_mask_store_loaded=syncode_available,
+        syncode_init_error=syncode_init_error,
     )
 
     status_message = ""
@@ -222,6 +330,17 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     experiment.constraint_applied = evidence.constraint_applied
     experiment.fallback_occurred = evidence.fallback_occurred
     experiment.syncode_error = evidence.syncode_error
+    experiment.lark_grammar_loaded = evidence.lark_grammar_loaded
+    experiment.syncode_mask_store_loaded = evidence.syncode_mask_store_loaded
+    experiment.constraint_active_during_generation = evidence.constraint_active_during_generation
+    experiment.raw_unconstrained_generation_used = evidence.raw_unconstrained_generation_used
+    experiment.unconstrained_reason = evidence.unconstrained_reason
+    experiment.syncode_init_error = syncode_init_error
+    experiment.syncode_stopped_reason = syncode_stopped_reason
+    experiment.raw_fallback_prevented = raw_fallback_prevented
+    experiment.eos_allowed_at_completion = bool(eos_allowed_at_completion)
+    experiment.normal_max_tokens = normal_max_tokens
+    experiment.absolute_max_tokens = absolute_max_tokens
     experiment.parse_tree_available = parse_tree.parse_tree_available
     experiment.parse_tree_text = parse_tree.parse_tree_text
     experiment.parse_tree_error_type = parse_tree.parse_tree_error_type
@@ -231,6 +350,17 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     experiment.parse_tree_unexpected_token = parse_tree.parse_tree_unexpected_token
     experiment.parse_tree_expected_terminals = parse_tree.parse_tree_expected_terminals
     experiment.parse_tree_previous_token = parse_tree.parse_tree_previous_token
+    # Parser failure context — only populated when parse_tree_available is False.
+    _pfc = parse_tree.parser_failure_context
+    experiment.parser_failure_context = ParserFailureContextSchema(
+        available=_pfc.available if _pfc else False,
+        prefix_before_error=_pfc.prefix_before_error if _pfc else "",
+        error_line_text=_pfc.error_line_text if _pfc else "",
+        caret_line=_pfc.caret_line if _pfc else "",
+        expected_terminals=_pfc.expected_terminals if _pfc else [],
+        likely_parser_state_summary=_pfc.likely_parser_state_summary if _pfc else "",
+        likely_interpretation=_pfc.likely_interpretation if _pfc else "",
+    )
 
     try:
         store.save(experiment)
@@ -281,6 +411,17 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         constraint_applied=evidence.constraint_applied,
         fallback_occurred=evidence.fallback_occurred,
         syncode_error=evidence.syncode_error,
+        lark_grammar_loaded=evidence.lark_grammar_loaded,
+        syncode_mask_store_loaded=evidence.syncode_mask_store_loaded,
+        constraint_active_during_generation=evidence.constraint_active_during_generation,
+        raw_unconstrained_generation_used=evidence.raw_unconstrained_generation_used,
+        unconstrained_reason=evidence.unconstrained_reason,
+        syncode_init_error=syncode_init_error,
+        syncode_stopped_reason=syncode_stopped_reason,
+        raw_fallback_prevented=raw_fallback_prevented,
+        eos_allowed_at_completion=bool(eos_allowed_at_completion),
+        normal_max_tokens=normal_max_tokens,
+        absolute_max_tokens=absolute_max_tokens,
         parse_tree_available=parse_tree.parse_tree_available,
         parse_tree_text=parse_tree.parse_tree_text,
         parse_tree_error_type=parse_tree.parse_tree_error_type,
@@ -290,6 +431,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         parse_tree_unexpected_token=parse_tree.parse_tree_unexpected_token,
         parse_tree_expected_terminals=parse_tree.parse_tree_expected_terminals,
         parse_tree_previous_token=parse_tree.parse_tree_previous_token,
+        parser_failure_context=experiment.parser_failure_context,
         steps=steps,
     )
 

@@ -106,7 +106,8 @@ module div(a, b, y);
 endmodule
 """
     result = validate_verilog_output(code)
-    assert result.final_parse_valid is False
+    assert result.final_parse_valid is True
+    assert "arithmetic /" in result.unsupported_constructs_detected
     assert "arithmetic /" in result.unsupported_constructs_detected
 
 

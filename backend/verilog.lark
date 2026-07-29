@@ -1,92 +1,134 @@
-// 1. Source Text
-start: description*
-
-?description: module
+start: module+ END_OF_TEXT?
 
 module: "module" name_of_module list_of_ports? ";" module_item* "endmodule"
 
 ?name_of_module: IDENTIFIER
 
-list_of_ports: "(" port ("," port)* ")"
+list_of_ports: "(" [port ("," port)*] ")"
+
 ?port: IDENTIFIER
 
 ?module_item: input_declaration
             | output_declaration
+            | inout_declaration
             | net_declaration
             | module_instantiation
             | continuous_assign
 
-// 2. Declarations
-input_declaration: "input" list_of_variables ";"
-output_declaration: "output" list_of_variables ";"
-net_declaration: "wire" list_of_variables ";"
-continuous_assign: "assign" list_of_assignments ";"
+
+// 3. Declarations
+// A simple vector range such as [7:0] is now allowed.
+input_declaration: "input" range? list_of_variables ";"
+
+output_declaration: "output" range? list_of_variables ";"
+
+inout_declaration: "inout" range? list_of_variables ";"
+
+net_declaration: "wire" range? list_of_variables ";"
+
+range: "[" NUMBER ":" NUMBER "]"
+
 list_of_variables: IDENTIFIER ("," IDENTIFIER)*
+
+
+// 4. Continuous assignments
+continuous_assign: "assign" list_of_assignments ";"
+
 list_of_assignments: assignment ("," assignment)*
 
-// 3. Primitive Instances
-// These are merged with module instantiations
-
-// 4. Module Instantiations
-module_instantiation: name_of_module module_instance ("," module_instance)* ";"
-module_instance: name_of_instance "(" list_of_module_connections ")"
-?name_of_instance: IDENTIFIER
-list_of_module_connections: module_port_connection ("," module_port_connection)*
-                          | named_port_connection ("," named_port_connection)*
-module_port_connection: expression
-named_port_connection: "." IDENTIFIER "(" expression ")"
-
-// 5. Behavioral Statements
 assignment: lvalue "=" expression
 
-// 6. Specify Section
+?lvalue: IDENTIFIER
 
-// 7. Expressions
-?lvalue: identifier
-expression: condition
-?constant_value: constant_zero
-               | constant_one
-               | constant_x
-constant_zero: "1'b0"
-             | "1'h0"
-constant_one: "1'b1"
-            | "1'h1"
-constant_x: "1'bx"
-          | "1'hx"
-?condition: or
-           | ternary
-?ternary: or "?" or ":" or
-?or: xor
-   | or_gate
-or_gate: or "|" xor
-?xor: and
-    | xor_gate
-    | xnor_gate
-xor_gate: xor "^" and
-xnor_gate: xor "~^" and
-         | xor "^~" and
-?and: unary
-    | and_gate
-and_gate: and "&" unary
+
+// 5. Module instantiations
+module_instantiation: name_of_module module_instance ("," module_instance)* ";"
+
+module_instance: name_of_instance "(" list_of_module_connections? ")"
+
+?name_of_instance: IDENTIFIER
+
+list_of_module_connections: named_port_connection ("," named_port_connection)*
+                          | module_port_connection ("," module_port_connection)*
+
+module_port_connection: expression
+
+named_port_connection: "." IDENTIFIER "(" expression? ")"
+
+
+// 6. Expressions
+// Precedence goes from lowest at the top to highest at the bottom.
+?expression: conditional
+
+?conditional: logical_or
+            | logical_or "?" expression ":" conditional
+
+?logical_or: logical_and
+           | logical_or "||" logical_and
+
+?logical_and: bitwise_or
+            | logical_and "&&" bitwise_or
+
+?bitwise_or: bitwise_xor
+           | bitwise_or "|" bitwise_xor
+
+?bitwise_xor: bitwise_and
+            | bitwise_xor "^" bitwise_and
+            | bitwise_xor "~^" bitwise_and
+            | bitwise_xor "^~" bitwise_and
+
+?bitwise_and: equality
+            | bitwise_and "&" equality
+
+?equality: relational
+         | equality "==" relational
+         | equality "!=" relational
+
+?relational: shift
+           | relational "<" shift
+           | relational "<=" shift
+           | relational ">" shift
+           | relational ">=" shift
+
+?shift: addition
+      | shift "<<" addition
+      | shift ">>" addition
+
+?addition: multiplication
+         | addition "+" multiplication
+         | addition "-" multiplication
+
+?multiplication: unary
+               | multiplication "*" unary
+               | multiplication "/" unary
+               | multiplication "%" unary
+
 ?unary: primary
-      | not_gate
-not_gate: ("!" | "~") primary
+      | unary_operator unary
+
+unary_operator: "!" | "~" | "+" | "-"
+
 ?primary: IDENTIFIER
-        | constant_value
-        | "(" or ")"
-?identifier: IDENTIFIER
+        | NUMBER
+        | "(" expression ")"
 
-// 8. General
-IDENTIFIER: CNAME
+
+IDENTIFIER: NORMAL_IDENTIFIER
           | ESCAPED_IDENTIFIER
-ESCAPED_IDENTIFIER: /\\([^\s]+)/
-COMMENT: "//" /[^\n]*/ NEWLINE
-NEWLINE: "\n"
 
-%import common.CNAME
-%import common.ESCAPED_STRING
+# SynCode/interegular DFA builder does not support \b or negative lookahead.
+# Reserved words are enforced by parser literal terminals (e.g. "input").
+NORMAL_IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_$]*/
+
+ESCAPED_IDENTIFIER: /\\[^\s]+/
+
+
+NUMBER: /[0-9]+'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+|[0-9]+/
+
+
+END_OF_TEXT: "<|endoftext|>"
+
+
+// 9. Whitespace
 %import common.WS
-
 %ignore WS
-%ignore COMMENT
-%ignore NEWLINE

@@ -35,6 +35,21 @@ class Settings(BaseSettings):
     syncode_enabled: bool = True
     model_loaded: bool = False     # Flipped to True after model warm-up
 
+    # Research mode: when False (default), generation stops immediately when
+    # SynCode's parser enters an invalid state instead of falling back to raw
+    # unconstrained decoding.  Set to True only for exploratory runs where
+    # seeing the raw continuation is acceptable.
+    allow_syncode_fallback: bool = False
+
+    # Completion budget (SynCode research mode):
+    #   normal display/default limit  = max_new_tokens (typically 120)
+    #   if still not parse-valid at that point, continue constrained decoding
+    #   for up to completion_extra_tokens more tokens, capped by
+    #   absolute_max_tokens.
+    #   NORMAL_MAX_TOKENS=120, COMPLETION_EXTRA=80, ABSOLUTE_MAX=200
+    completion_extra_tokens: int = 80
+    absolute_max_tokens: int = 200
+
 
 # Singleton — import `settings` everywhere, never instantiate Settings directly.
 settings = Settings()

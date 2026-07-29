@@ -19,6 +19,7 @@
 
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/Badge";
+import { IncrementalParserStatePanel } from "@/components/visualization/IncrementalParserStatePanel";
 import { TokenProbabilityChart } from "@/components/visualization/TokenProbabilityChart";
 import { formatPct } from "@/lib/utils";
 import type { DecodingStep, MaskedTokenEntry, TopToken } from "@/types/decoding";
@@ -560,6 +561,9 @@ export function StepViewer({ step, mode }: Props) {
 
               {/* Accepted grammar terminals */}
               <AcceptSequencesPanel seqs={step.accept_sequences ?? []} />
+
+              {/* Incremental Lark parser state for this step prefix */}
+              <IncrementalParserStatePanel step={step} />
             </>
           ) : (
             /* Syncode mode but no step-level data (fallback / syncode unavailable) */
@@ -589,6 +593,7 @@ export function StepViewer({ step, mode }: Props) {
                 selectedId={selectedId}
               />
               <AcceptSequencesPanel seqs={step.accept_sequences ?? []} />
+              <IncrementalParserStatePanel step={step} />
             </>
           )}
         </>
@@ -615,6 +620,8 @@ export function StepViewer({ step, mode }: Props) {
             }))}
             selectedId={selectedId}
           />
+
+          <IncrementalParserStatePanel step={step} />
         </>
       )}
     </div>

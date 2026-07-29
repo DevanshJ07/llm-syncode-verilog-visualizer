@@ -47,21 +47,40 @@ function Chip({
   );
 }
 
-function constraintLabel(experiment: ExperimentResult): string {
-  const total = experiment.total_steps;
+/** Human-readable constraint-applied label: active steps / absolute budget. */
+function constraintAppliedLabel(experiment: ExperimentResult): string {
   const active = experiment.syncode_active_steps ?? 0;
+  const budget = experiment.absolute_max_tokens ?? experiment.total_steps;
   const status = experiment.constraint_status ?? "off";
 
   if (status === "off") return "off";
   if (status === "unavailable") return "unavailable";
-  if (status === "none") return `none (0/${total})`;
-  if (status === "partial") return `partial ${active}/${total}`;
-  if (status === "full") return `full ${active}/${total}`;
-  if (status === "failed") {
-    if (active > 0) return `partial ${active}/${total} (output invalid)`;
-    return `failed (0/${total} constrained)`;
+  return `${active} / ${budget}`;
+}
+
+/** Human-readable reason why SynCode stopped constraining. */
+function stoppedReasonLabel(reason: string | undefined, mode: string): string {
+  if (mode !== "syncode") return "N/A (raw mode)";
+  if (!reason) return "max_tokens_incomplete";
+
+  if (reason === "parse_complete") return "parse_complete";
+  if (reason === "eos_parse_complete") return "eos_parse_complete";
+  if (reason === "max_tokens_incomplete" || reason === "max_tokens") {
+    return "max_tokens_incomplete";
   }
-  return status;
+  if (reason.startsWith("syncode_parser_error_at_step_")) {
+    return "parser_error";
+  }
+  if (reason.startsWith("eos_at_step_")) {
+    return "eos";
+  }
+  if (reason.startsWith("max_new_tokens_reached_")) {
+    return "max_tokens_incomplete";
+  }
+  if (reason.startsWith("whitespace_stall_at_step_")) {
+    return "whitespace_stall";
+  }
+  return reason;
 }
 
 export function SyncodeEvidencePanel({ experiment }: Props) {
@@ -71,16 +90,32 @@ export function SyncodeEvidencePanel({ experiment }: Props) {
   const fallback = experiment.syncode_fallback_steps ?? 0;
   const parseErr = experiment.syncode_parse_error_steps ?? 0;
   const available = experiment.syncode_available ?? false;
+  const rawFallbackUsed = fallback > 0;
+  const maskStoreLoaded = experiment.syncode_mask_store_loaded ?? available;
+  const larkLoaded = experiment.lark_grammar_loaded ?? true;
+  const constraintActiveDuringGen =
+    experiment.constraint_active_during_generation ?? (active > 0);
+  const rawUnconstrainedUsed =
+    experiment.raw_unconstrained_generation_used ?? rawFallbackUsed;
+  const unconstrainedReason = experiment.unconstrained_reason ?? "";
   const finalValid = experiment.final_parse_valid ?? false;
-  const fallbackOccurred = experiment.fallback_occurred ?? fallback > 0;
   const constraintStatus = experiment.constraint_status ?? "off";
+  const stoppedReason = experiment.syncode_stopped_reason ?? "";
+  const rawFallbackPrevented = experiment.raw_fallback_prevented ?? false;
+
+  const isSyncodeFastFail = stoppedReason.startsWith("syncode_parser_error");
+  const isParseComplete =
+    stoppedReason === "parse_complete" || stoppedReason === "eos_parse_complete";
+  const treeAvailable = experiment.parse_tree_available === true;
+  const eosAllowed = experiment.eos_allowed_at_completion ?? false;
+
   const fullyConstrained =
     isSyncodeMode &&
-    available &&
-    !fallbackOccurred &&
+    maskStoreLoaded &&
+    !rawFallbackUsed &&
     active === total &&
     total > 0 &&
-    constraintStatus === "full" &&
+    (constraintStatus === "full" || isParseComplete) &&
     finalValid;
 
   const constraintChipOk = constraintStatus === "full" && finalValid;
@@ -105,15 +140,28 @@ export function SyncodeEvidencePanel({ experiment }: Props) {
           </span>
         )}
 
-        {isSyncodeMode && !fullyConstrained && !finalValid && (
-          <span className="rounded border border-[#f85149]/40 bg-[#f85149]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#f85149]">
-            ✗ SynCode constraint partial or failed; final output not valid under tested grammar
+        {isSyncodeMode && isParseComplete && finalValid && (
+          <span className="rounded border border-[#3fb950]/40 bg-[#3fb950]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#3fb950]">
+            ✓ {stoppedReason === "eos_parse_complete" ? "eos_parse_complete" : "parse_complete"}
+            {" — grammar-valid module"}
           </span>
         )}
 
-        {isSyncodeMode && !fullyConstrained && finalValid && (
+        {isSyncodeMode && isSyncodeFastFail && (
+          <span className="rounded border border-[#f85149]/40 bg-[#f85149]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#f85149]">
+            ✗ SynCode parser error — generation stopped (no raw fallback)
+          </span>
+        )}
+
+        {isSyncodeMode && !fullyConstrained && !isSyncodeFastFail && !isParseComplete && !finalValid && (
+          <span className="rounded border border-[#f85149]/40 bg-[#f85149]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#f85149]">
+            ✗ SynCode output not grammar-valid under absolute token budget
+          </span>
+        )}
+
+        {isSyncodeMode && !fullyConstrained && !isSyncodeFastFail && !isParseComplete && finalValid && (
           <span className="rounded border border-[#d29922]/40 bg-[#d29922]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#d29922]">
-            ⚠ partial constraint — output valid but not all steps were constrained
+            ⚠ output valid but constraint evidence is incomplete
           </span>
         )}
 
@@ -126,43 +174,88 @@ export function SyncodeEvidencePanel({ experiment }: Props) {
 
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10">
         <Chip
+          label="Lark grammar loaded"
+          value={larkLoaded ? "yes" : "no"}
+          ok={larkLoaded}
+          bad={!larkLoaded}
+        />
+        <Chip
+          label="SynCode mask store"
+          value={maskStoreLoaded ? "loaded" : "unavailable"}
+          ok={maskStoreLoaded}
+          warn={isSyncodeMode && !maskStoreLoaded}
+          bad={isSyncodeMode && !maskStoreLoaded}
+        />
+        <Chip
+          label="Constraint active during gen"
+          value={isSyncodeMode ? (constraintActiveDuringGen ? "yes" : "no") : "N/A"}
+          ok={isSyncodeMode && constraintActiveDuringGen}
+          bad={isSyncodeMode && !constraintActiveDuringGen}
+        />
+        <Chip
+          label="Raw unconstrained used"
+          value={isSyncodeMode ? (rawUnconstrainedUsed ? "yes" : "no") : "N/A"}
+          ok={isSyncodeMode && !rawUnconstrainedUsed}
+          bad={isSyncodeMode && rawUnconstrainedUsed}
+        />
+        {unconstrainedReason && isSyncodeMode && (
+          <Chip label="Unconstrained reason" value={unconstrainedReason} bad warn />
+        )}
+        <Chip
           label="Constraint requested"
           value={isSyncodeMode ? "yes" : "no"}
           ok={isSyncodeMode}
         />
-        <Chip label="Backend mode" value={experiment.mode} ok={isSyncodeMode} />
-        <Chip label="Grammar" value={experiment.grammar_name || "verilog"} ok />
-        <Chip label="Parser" value={experiment.parser_name || "lalr"} ok />
         <Chip
-          label="Mask store"
-          value={available ? "loaded" : "unavailable"}
-          ok={available}
-          warn={isSyncodeMode && !available}
-          bad={isSyncodeMode && !available}
-        />
-        <Chip
-          label="Constraint applied"
-          value={constraintLabel(experiment)}
+          label="Constraint applied steps"
+          value={isSyncodeMode ? constraintAppliedLabel(experiment) : "N/A"}
           ok={constraintChipOk}
           warn={constraintChipWarn}
           bad={constraintChipBad}
         />
         <Chip
-          label="Final output valid"
+          label="Constraint stopped reason"
+          value={stoppedReasonLabel(stoppedReason, experiment.mode)}
+          ok={isParseComplete}
+          warn={
+            isSyncodeMode &&
+            !isParseComplete &&
+            !isSyncodeFastFail &&
+            (stoppedReason === "max_tokens_incomplete" ||
+              stoppedReason === "max_tokens" ||
+              stoppedReason.startsWith("whitespace_stall") ||
+              stoppedReason.startsWith("eos_at_step"))
+          }
+          bad={isSyncodeFastFail}
+        />
+        <Chip
+          label="Raw fallback used"
+          value={isSyncodeMode ? (rawFallbackUsed ? "yes" : "no") : "N/A"}
+          ok={isSyncodeMode && !rawFallbackUsed}
+          bad={isSyncodeMode && rawFallbackUsed}
+        />
+        <Chip
+          label="Final parse valid"
           value={finalValid ? "yes" : "no"}
           ok={finalValid}
           bad={!finalValid && isSyncodeMode}
           warn={!finalValid && !isSyncodeMode}
         />
         <Chip
-          label="Fallback occurred"
-          value={fallbackOccurred ? `yes (${fallback}/${total})` : "no"}
-          ok={!fallbackOccurred}
-          warn={fallbackOccurred}
-          bad={fallbackOccurred && isSyncodeMode}
+          label="Parser tree available"
+          value={treeAvailable ? "yes" : "no"}
+          ok={treeAvailable}
+          bad={!treeAvailable && isSyncodeMode}
+        />
+        <Chip
+          label="EOS allowed at completion"
+          value={isSyncodeMode ? (eosAllowed ? "yes" : "no") : "N/A"}
+          ok={isSyncodeMode && eosAllowed}
+          warn={isSyncodeMode && !eosAllowed && finalValid}
+          bad={isSyncodeMode && !eosAllowed && !finalValid}
         />
         {parseErr > 0 && (
-          <Chip label="Step parse errors" value={`${parseErr}/${total}`} warn bad />
+          <Chip label="Step parse errors" value={`${parseErr} / ${total}`} warn bad />
         )}
         {(experiment.unsupported_constructs_detected?.length ?? 0) > 0 && (
           <Chip
@@ -183,6 +276,14 @@ export function SyncodeEvidencePanel({ experiment }: Props) {
                 {experiment.unsupported_constructs_detected.join(", ")}
               </p>
             )}
+          {isSyncodeFastFail && (
+            <p className="mt-1">
+              <strong>Generation stopped:</strong> SynCode parser failed and raw
+              fallback is disabled (<code>ALLOW_RAW_FALLBACK=false</code>).
+              Only the constrained prefix (
+              {active} step{active !== 1 ? "s" : ""}) was returned.
+            </p>
+          )}
           {(experiment.final_parse_error || experiment.syncode_error) && (
             <p className="mt-1 font-mono opacity-90">
               {experiment.syncode_error || experiment.final_parse_error}
@@ -200,10 +301,19 @@ export function SyncodeEvidencePanel({ experiment }: Props) {
         </p>
       )}
 
-      {isSyncodeMode && !available && (
+      {isSyncodeMode && !maskStoreLoaded && (
         <p className="mt-2 text-[11px] text-[#f85149]">
-          SynCode was not available (package missing or grammar failed to compile).
-          Generation ran unconstrained. Check backend startup logs.
+          SynCode mask store unavailable — generation was not run unconstrained.
+          {experiment.syncode_init_error && (
+            <span className="mt-1 block font-mono opacity-90">
+              {experiment.syncode_init_error}
+            </span>
+          )}
+          {!experiment.syncode_init_error && experiment.syncode_error && (
+            <span className="mt-1 block font-mono opacity-90">
+              {experiment.syncode_error}
+            </span>
+          )}
         </p>
       )}
     </div>

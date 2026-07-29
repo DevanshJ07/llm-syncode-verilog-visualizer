@@ -16,14 +16,14 @@ export function formatParserTreeReport(experiment: ExperimentResult): string {
     "VERILOG PARSER TREE REPORT",
     DIVIDER,
     "",
-    `Run ID:            ${experiment.experiment_id}`,
-    `Model:             ${experiment.model_name}`,
-    `Grammar:           ${experiment.grammar_name ?? "verilog"}`,
-    `Parser:            ${experiment.parser_name ?? "lalr"}`,
-    `Final parse valid: ${experiment.final_parse_valid ? "yes" : "no"}`,
-    `Fallback occurred: ${experiment.fallback_occurred ? "yes" : "no"}`,
-    `Constraint applied:${experiment.constraint_applied ? "yes" : "no"}`,
-    `Mode:              ${experiment.mode}`,
+    `Run ID:             ${experiment.experiment_id}`,
+    `Model:              ${experiment.model_name}`,
+    `Grammar:            ${experiment.grammar_name ?? "verilog"}`,
+    `Parser:             ${experiment.parser_name ?? "lalr"}`,
+    `Final parse valid:  ${experiment.final_parse_valid ? "yes" : "no"}`,
+    `Constraint applied: ${experiment.constraint_applied ? "yes" : "no"}`,
+    `Raw fallback used:  ${(experiment.syncode_fallback_steps ?? 0) > 0 ? "yes" : "no"}`,
+    `Mode:               ${experiment.mode}`,
     "",
     DIVIDER,
     "FINAL GENERATED OUTPUT",
@@ -39,6 +39,7 @@ export function formatParserTreeReport(experiment: ExperimentResult): string {
   const treeAttempted = experiment.parse_tree_available !== undefined;
 
   if (treeAvailable) {
+    // ── Valid parse — show tree ──────────────────────────────────────────
     lines.push(
       DIVIDER,
       "PARSER TREE",
@@ -48,7 +49,7 @@ export function formatParserTreeReport(experiment: ExperimentResult): string {
       "",
     );
   } else if (treeAttempted && experiment.parse_tree_error_type) {
-    // Backend ran the parser and it threw an error.
+    // ── Parse failed — show error diagnostics + failure context ──────────
     lines.push(
       DIVIDER,
       "PARSER ERROR",
@@ -63,8 +64,40 @@ export function formatParserTreeReport(experiment: ExperimentResult): string {
       `Previous token:     ${experiment.parse_tree_previous_token || "N/A"}`,
       "",
     );
+
+    // Parser failure context block
+    const pfc = experiment.parser_failure_context;
+    if (pfc?.available) {
+      lines.push(DIVIDER, "PARSER FAILURE CONTEXT", DIVIDER, "");
+
+      if (pfc.prefix_before_error) {
+        lines.push(
+          "Output near failure:",
+          pfc.prefix_before_error,
+        );
+        if (pfc.caret_line) {
+          lines.push(`        ${pfc.caret_line}`);
+        }
+        lines.push("");
+      }
+
+      if (pfc.likely_parser_state_summary) {
+        lines.push("Parser state at failure:", pfc.likely_parser_state_summary, "");
+      }
+
+      if (pfc.likely_interpretation) {
+        lines.push("Likely parser interpretation:", pfc.likely_interpretation, "");
+      }
+
+      lines.push(
+        "Reason no parser tree was generated:",
+        "The final output is not a complete valid derivation under the Verilog",
+        "grammar. Lark can only produce tree.pretty() after a successful parse.",
+        "",
+      );
+    }
   } else {
-    // Fields were not returned by the backend (old run, or data not mapped).
+    // ── Fields never arrived ─────────────────────────────────────────────
     lines.push(
       DIVIDER,
       "PARSER TREE UNAVAILABLE",

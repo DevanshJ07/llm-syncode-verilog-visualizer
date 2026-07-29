@@ -56,6 +56,36 @@ class GenerationFailedError(Exception):
         }
 
 
+class SyncodeUnavailableError(GenerationFailedError):
+    """Raised when syncode mode is requested but the mask store cannot load."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        init_error: str = "",
+        init_traceback: str = "",
+    ) -> None:
+        self.init_error = init_error
+        self.init_traceback = init_traceback
+        super().__init__(
+            message,
+            reasons=["syncode_mask_store_unavailable"],
+        )
+
+    def to_detail(self) -> dict:
+        detail = super().to_detail()
+        detail.update(
+            {
+                "error": "syncode_unavailable",
+                "init_error": self.init_error,
+                "init_traceback": self.init_traceback,
+                "unconstrained_reason": "syncode_mask_store_unavailable",
+            }
+        )
+        return detail
+
+
 def is_placeholder_output(text: str) -> bool:
     """True when text is empty or matches known UI placeholder patterns."""
     if not text or not text.strip():
@@ -80,15 +110,24 @@ def validate_generation_result(
     """
     reasons: list[str] = []
 
-    if len(steps) == 0:
+    # Fail-fast syncode termination is a valid, expected outcome — not an error.
+    # When SynCode's parser fails and allow_syncode_fallback=False, we stop
+    # generation before the offending token.  The partial trace (0..N-1 steps)
+    # may be empty if the failure happened at the very first step; that is still
+    # a legitimate response (returns syncode_stopped_reason to the frontend).
+    is_syncode_fail_fast = (early_termination or "").startswith(
+        "syncode_parser_error"
+    )
+
+    if len(steps) == 0 and not is_syncode_fail_fast:
         reasons.append("zero decoding steps (len(steps) == 0)")
-    if not trace_steps:
+    if not trace_steps and not is_syncode_fail_fast:
         reasons.append("empty trace (_trace_steps has no entries)")
-    if not generated_ids_nonempty(steps):
+    if not generated_ids_nonempty(steps) and not is_syncode_fail_fast:
         reasons.append("empty token list (no selected_token_id in steps)")
-    if not generated_text or not generated_text.strip():
+    if (not generated_text or not generated_text.strip()) and not is_syncode_fail_fast:
         reasons.append("generated_text is empty or whitespace-only")
-    elif is_placeholder_output(generated_text):
+    elif generated_text and is_placeholder_output(generated_text):
         reasons.append(
             f"placeholder-only output: {generated_text[:80]!r}"
         )
