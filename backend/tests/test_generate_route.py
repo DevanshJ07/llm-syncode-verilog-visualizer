@@ -27,10 +27,11 @@ def client():
 
 
 def test_generate_returns_500_on_empty_steps(client):
+    # generate() returns (text, steps, early_termination, eos_allowed_at_completion)
     with patch(
         "app.api.routes.generate.llm_service.generate",
         new_callable=AsyncMock,
-        return_value=("", []),
+        return_value=("", [], "", False),
     ):
         r = client.post(
             "/generate",
@@ -80,7 +81,7 @@ endmodule"""
     with patch(
         "app.api.routes.generate.llm_service.generate",
         new_callable=AsyncMock,
-        return_value=(valid_verilog, [_step()]),
+        return_value=(valid_verilog, [_step()], "", False),
     ):
         r = client.post(
             "/generate",
@@ -109,7 +110,7 @@ endmodule"""
     with patch(
         "app.api.routes.generate.llm_service.generate",
         new_callable=AsyncMock,
-        return_value=(invalid, [_step()]),
+        return_value=(invalid, [_step()], "max_tokens_incomplete", False),
     ), patch(
         "app.api.routes.generate.llm_service._syncode",
         available=True,

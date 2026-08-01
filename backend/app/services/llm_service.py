@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -67,6 +68,41 @@ if TYPE_CHECKING:
     from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 log = logging.getLogger(__name__)
+
+
+def _console_safe_text(text: str) -> str:
+    """
+    Encode *text* for the current stdout encoding.
+
+    Characters unsupported by the console (e.g. U+2192 on Windows cp1252)
+    become backslash escapes such as ``\\u2192`` so the message stays
+    readable without raising ``UnicodeEncodeError``.
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        return text.encode(encoding, errors="backslashreplace").decode(
+            encoding, errors="replace"
+        )
+    except Exception:
+        return text.encode("ascii", errors="backslashreplace").decode("ascii")
+
+
+def _safe_console_print(*args: object, sep: str = " ", end: str = "\n", flush: bool = False) -> None:
+    """
+    Observational console print that never propagates encoding failures.
+
+    Used only for forensic / diagnostic output.  Masking, parsing, and
+    generation errors must not be swallowed by this helper.
+    """
+    try:
+        msg = sep.join(str(a) for a in args)
+        sys.stdout.write(_console_safe_text(msg) + end)
+        if flush:
+            sys.stdout.flush()
+    except Exception:
+        # Diagnostic output must never affect SynCode masking or generation.
+        pass
+
 
 # Single worker — Qwen2ForCausalLM is not safe for concurrent forward passes.
 _executor = ThreadPoolExecutor(max_workers=1)
@@ -529,18 +565,19 @@ class _SyncodeConstraint:
             )
 
             # Root-cause diagnosis --------------------------------------------------
+            # Use ASCII "->" in labels so Windows cp1252 consoles never fail here.
             skip_flag = bool(_skip_results[0]) if _skip_results else None
             if _parse_exceptions:
                 diagnosis = (
-                    f"PARSE_EXCEPTION → {_parse_exceptions[0]} "
+                    f"PARSE_EXCEPTION -> {_parse_exceptions[0]} "
                     f"[input: {(_parse_inputs[0] if _parse_inputs else '?')!r}]"
                 )
             elif skip_flag is True:
-                diagnosis = "PARSE_FAILED_SKIP → scores returned unchanged (exception in earlier step)"
+                diagnosis = "PARSE_FAILED_SKIP -> scores returned unchanged (exception in earlier step)"
             elif _mask_stats and _mask_stats[0]["all_invalid"]:
-                diagnosis = "ACCEPT_MASK_ALL_ZEROS → no valid tokens → scores returned unchanged"
+                diagnosis = "ACCEPT_MASK_ALL_ZEROS -> no valid tokens -> scores returned unchanged"
             elif _mask_stats and _mask_stats[0]["all_valid"]:
-                diagnosis = "ACCEPT_MASK_ALL_ONES → grammar accepts FULL vocab → no masking"
+                diagnosis = "ACCEPT_MASK_ALL_ONES -> grammar accepts FULL vocab -> no masking"
             elif n_newly_inf == 0 and n_changed == 0:
                 diagnosis = "NO_CHANGE: logits identical to input (cause unknown)"
             else:
@@ -565,24 +602,28 @@ class _SyncodeConstraint:
             }
             forensic_log.append(step_record)
 
-            # Always print first 10 steps; print afterwards only when masking changes
+            # Always print first 10 steps; print afterwards only when masking changes.
+            # Diagnostic only — encoding failures must never abort masking.
             if step < 10 or n_newly_inf > 0 or _parse_exceptions:
-                ms = _mask_stats[0] if _mask_stats else {}
-                exc_str = _parse_exceptions[0][:80] if _parse_exceptions else "none"
-                print(
-                    f"[FORENSIC step {step:>3}]"
-                    f"  partial={partial_str[:40]!r}"
-                    f"  start_from={ge.start_from}"
-                    f"  skip={skip_flag}"
-                    f"  n_accepted={ms.get('n_accepted','?')}/{ms.get('vocab_len','?')}"
-                    f"  ({ms.get('pct','?')}%)"
-                    f"  all_valid={ms.get('all_valid','?')}"
-                    f"  ws_valid={ms.get('ws_valid','?')}"
-                    f"  n_newly_inf={n_newly_inf}"
-                    f"  parse_exc={exc_str!r}"
-                    f"  → {diagnosis}",
-                    flush=True,
-                )
+                try:
+                    ms = _mask_stats[0] if _mask_stats else {}
+                    exc_str = _parse_exceptions[0][:80] if _parse_exceptions else "none"
+                    _safe_console_print(
+                        f"[FORENSIC step {step:>3}]"
+                        f"  partial={partial_str[:40]!r}"
+                        f"  start_from={ge.start_from}"
+                        f"  skip={skip_flag}"
+                        f"  n_accepted={ms.get('n_accepted','?')}/{ms.get('vocab_len','?')}"
+                        f"  ({ms.get('pct','?')}%)"
+                        f"  all_valid={ms.get('all_valid','?')}"
+                        f"  ws_valid={ms.get('ws_valid','?')}"
+                        f"  n_newly_inf={n_newly_inf}"
+                        f"  parse_exc={exc_str!r}"
+                        f"  -> {diagnosis}",
+                        flush=True,
+                    )
+                except Exception:
+                    pass
 
             return result
 
@@ -594,7 +635,7 @@ class _SyncodeConstraint:
             "patched_fn_name": ge.__dict__.get("mask_scores", object).__name__
             if "mask_scores" in ge.__dict__ else "NOT_FOUND",
         }
-        print(
+        _safe_console_print(
             f"[FORENSIC] Installed forensic patch on grammar_engine.mask_scores "
             f"(grammar=verilog, path={self._grammar_name})",
             flush=True,
@@ -611,7 +652,7 @@ class _SyncodeConstraint:
             return
         ge = self._processor.grammar_engine
 
-        print(
+        _safe_console_print(
             f"\n[FORENSIC INIT PROBE] grammar=verilog"
             f"  ignore_whitespace={ge._ignore_whitespace}"
             f"  parse_output_only={ge.parse_output_only}"
@@ -642,8 +683,8 @@ class _SyncodeConstraint:
                 if wid < total and not accept_mask[wid]
             )
 
-            print(
-                f"[FORENSIC INIT PROBE] empty input →"
+            _safe_console_print(
+                f"[FORENSIC INIT PROBE] empty input ->"
                 f"  remainder_state={rem_state}"
                 f"  accept_seqs={accept_seqs}"
                 f"  n_accepted={n_acc}/{total} ({n_acc/total*100:.1f}%)"
@@ -654,30 +695,33 @@ class _SyncodeConstraint:
             )
 
             if all_v:
-                print(
+                _safe_console_print(
                     "[FORENSIC INIT PROBE] *** ROOT CAUSE CANDIDATE: "
                     "grammar accepts ALL tokens at initial state (overapproximation) "
-                    "→ no masking will ever occur ***",
+                    "-> no masking will ever occur ***",
                     flush=True,
                 )
             elif ws_valid > 0 and ws_invalid == 0:
-                print(
+                _safe_console_print(
                     "[FORENSIC INIT PROBE] *** NOTE: ALL whitespace tokens are "
-                    "grammar-valid at initial state → whitespace loop cannot be "
+                    "grammar-valid at initial state -> whitespace loop cannot be "
                     "prevented by grammar masking alone ***",
                     flush=True,
                 )
 
             ip.reset()
-            print("[FORENSIC INIT PROBE] Parser reset after probe.", flush=True)
+            _safe_console_print("[FORENSIC INIT PROBE] Parser reset after probe.", flush=True)
 
         except Exception as exc:
-            print(
+            _safe_console_print(
                 f"[FORENSIC INIT PROBE] probe failed: {type(exc).__name__}: {exc}",
                 flush=True,
             )
             import traceback  # noqa: PLC0415
-            traceback.print_exc()
+            try:
+                traceback.print_exc()
+            except Exception:
+                pass
 
     @property
     def forensic_log(self) -> list:
@@ -775,7 +819,7 @@ class _SyncodeConstraint:
                 ms = ge.__dict__.get("mask_scores")
                 ms_name = getattr(ms, "__name__", type(ms).__name__) if ms else "NOT_IN_DICT"
                 flog_len = len(getattr(self, "_forensic_log", []))
-                print(
+                _safe_console_print(
                     f"[DIAG step 0] ge.mask_scores in __dict__={ms is not None}"
                     f"  name={ms_name}"
                     f"  forensic_log_len={flog_len}"
@@ -1292,7 +1336,7 @@ class LLMService:
             _con_top3_str = "(raw mode — no constraint)"
             _after_src = "probs_raw=softmax(logits/T)"
 
-        print(
+        _safe_console_print(
             f"[VERIFY step {step_idx+1:>3}]"
             f"  RAW  top3: {_raw_top3_str}"
             f"  |  CONSTRAINED top3 [{_after_src}]: {_con_top3_str}"
@@ -1916,7 +1960,7 @@ class LLMService:
                 _trace_steps.append(trace_step)
                 # INFO-level print for immediate console visibility even when
                 # the server log level is set above DEBUG.
-                print(
+                _safe_console_print(
                     f"[TRACE step {step_idx+1:>3}] "
                     f"sel={step.selected_token!r:>12} (id={selected_id}) "
                     f"src={step.selection_source:<22} "
@@ -1928,7 +1972,7 @@ class LLMService:
                     f"fallback={step.fallback_used}",
                     flush=True,
                 )
-                print(
+                _safe_console_print(
                     f"[generation] step {step_idx+1} selected token: "
                     f"{step.selected_token!r}  "
                     f"constraint active: {step.syncode_active}",
