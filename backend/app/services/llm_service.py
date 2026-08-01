@@ -3,11 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import sys
 import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
+
+from app.console_safe import (
+    _console_safe_text,
+    _safe_console_print,
+)
 
 # Absolute, normalised path to the Verilog Lark grammar file.
 _VERILOG_GRAMMAR_PATH: str = os.path.normpath(
@@ -68,41 +72,6 @@ if TYPE_CHECKING:
     from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 log = logging.getLogger(__name__)
-
-
-def _console_safe_text(text: str) -> str:
-    """
-    Encode *text* for the current stdout encoding.
-
-    Characters unsupported by the console (e.g. U+2192 on Windows cp1252)
-    become backslash escapes such as ``\\u2192`` so the message stays
-    readable without raising ``UnicodeEncodeError``.
-    """
-    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
-    try:
-        return text.encode(encoding, errors="backslashreplace").decode(
-            encoding, errors="replace"
-        )
-    except Exception:
-        return text.encode("ascii", errors="backslashreplace").decode("ascii")
-
-
-def _safe_console_print(*args: object, sep: str = " ", end: str = "\n", flush: bool = False) -> None:
-    """
-    Observational console print that never propagates encoding failures.
-
-    Used only for forensic / diagnostic output.  Masking, parsing, and
-    generation errors must not be swallowed by this helper.
-    """
-    try:
-        msg = sep.join(str(a) for a in args)
-        sys.stdout.write(_console_safe_text(msg) + end)
-        if flush:
-            sys.stdout.flush()
-    except Exception:
-        # Diagnostic output must never affect SynCode masking or generation.
-        pass
-
 
 # Single worker — Qwen2ForCausalLM is not safe for concurrent forward passes.
 _executor = ThreadPoolExecutor(max_workers=1)
@@ -987,9 +956,9 @@ class LLMService:
                 if self._syncode.available:
                     diag.syncode_grammar_ok = True
                     diag.syncode_mask_store_ok = True
-                    print("[generate] SynCode mask store loaded", flush=True)
+                    _safe_console_print("[generate] SynCode mask store loaded", flush=True)
                 elif self._syncode.init_error:
-                    print(
+                    _safe_console_print(
                         f"[generate] SynCode unavailable: {self._syncode.init_error}",
                         flush=True,
                     )
@@ -1140,7 +1109,7 @@ class LLMService:
                         f"greedy selection must always equal constrained_logits.argmax()!"
                     )
                     log.error(_amsg)
-                    print(_amsg, flush=True)
+                    _safe_console_print(_amsg, flush=True)
 
             # ── Boolean mask ────────────────────────────────────────────────
             # grammar-invalid = finite in raw logits but -inf after masking.
@@ -1201,7 +1170,7 @@ class LLMService:
                     f"— valid_tokens_after_syncode may be using wrong logits!"
                 )
                 log.error(_vmsg)
-                print(_vmsg, flush=True)
+                _safe_console_print(_vmsg, flush=True)
 
             # Probability mass removed = Σ raw_prob of all masked tokens.
             prob_mass_removed: float = float(probs_raw[masked_flag].sum())
@@ -1505,12 +1474,12 @@ class LLMService:
         6. Decode and return generated text + step list.
         """
         if not self._loaded:
-            print("[generate] loading model...", flush=True)
+            _safe_console_print("[generate] loading model...", flush=True)
             self.load_model()
-            print("[generate] model ready", flush=True)
+            _safe_console_print("[generate] model ready", flush=True)
 
         if use_syncode and settings.syncode_enabled:
-            print("[generate] loading SynCode...", flush=True)
+            _safe_console_print("[generate] loading SynCode...", flush=True)
 
         # Determine if Syncode is actually usable for this request.
         effective_syncode = (
@@ -1654,7 +1623,7 @@ class LLMService:
             effective_syncode,
             len(prompt),
         )
-        print(
+        _safe_console_print(
             f"[TRACE start] gen_id={_generation_id} "
             f"mode={'syncode' if effective_syncode else 'raw'} "
             f"max_new_tokens={max_new_tokens} top_k={top_k} T={temperature} "
@@ -1674,19 +1643,19 @@ class LLMService:
         else:
             absolute_max = normal_max
 
-        print(
+        _safe_console_print(
             f"[generation] backend_mode: {'syncode' if effective_syncode else 'raw'}",
             flush=True,
         )
-        print(f"[generation] grammar: verilog", flush=True)
-        print(f"[generation] max_tokens: {normal_max}", flush=True)
-        print(f"[generation] absolute_max_tokens: {absolute_max}", flush=True)
-        print(
+        _safe_console_print(f"[generation] grammar: verilog", flush=True)
+        _safe_console_print(f"[generation] max_tokens: {normal_max}", flush=True)
+        _safe_console_print(f"[generation] absolute_max_tokens: {absolute_max}", flush=True)
+        _safe_console_print(
             f"[generation] raw fallback allowed: {settings.allow_syncode_fallback}",
             flush=True,
         )
 
-        print("[generate] starting generation...", flush=True)
+        _safe_console_print("[generate] starting generation...", flush=True)
         try:
             for step_idx in range(absolute_max):
                 # ── Optional Syncode mask ───────────────────────────────────
@@ -1759,7 +1728,7 @@ class LLMService:
                             if prefix_parse_valid:
                                 early_termination = "parse_complete"
                                 eos_allowed_at_completion = True
-                                print(
+                                _safe_console_print(
                                     f"[generation] parse_complete at step "
                                     f"{step_idx + 1} — prefix valid; mask failed "
                                     f"but not continuing raw",
@@ -1769,12 +1738,12 @@ class LLMService:
                                 early_termination = (
                                     f"syncode_parser_error_at_step_{step_idx + 1}"
                                 )
-                                print(
+                                _safe_console_print(
                                     f"[generation] parser error at step "
                                     f"{step_idx + 1}: {step_parser_error!r}",
                                     flush=True,
                                 )
-                                print(
+                                _safe_console_print(
                                     f"[generation] stopping due to parser error, "
                                     f"not continuing raw "
                                     f"(allow_syncode_fallback=False)",
@@ -1809,7 +1778,7 @@ class LLMService:
                         else:
                             masked_logits[eid] = float("-inf")
 
-                    print(
+                    _safe_console_print(
                         f"[generation] step {step_idx + 1} eos_allowed="
                         f"{step_eos_allowed} (prefix_parse_valid={prefix_parse_valid})",
                         flush=True,
@@ -1826,7 +1795,7 @@ class LLMService:
                             if prefix_parse_valid:
                                 early_termination = "parse_complete"
                                 eos_allowed_at_completion = True
-                                print(
+                                _safe_console_print(
                                     f"[generation] parse_complete at step "
                                     f"{step_idx + 1} — prefix valid; all other "
                                     f"tokens masked",
@@ -1836,7 +1805,7 @@ class LLMService:
                                 early_termination = (
                                     f"syncode_parser_error_at_step_{step_idx + 1}"
                                 )
-                                print(
+                                _safe_console_print(
                                     f"[generation] all tokens masked at step "
                                     f"{step_idx + 1}; stopping "
                                     f"(allow_syncode_fallback=False)",
@@ -1985,14 +1954,14 @@ class LLMService:
                 if effective_syncode and prefix_parse_valid:
                     if selected_id in eos_ids:
                         early_termination = "eos_parse_complete"
-                        print(
+                        _safe_console_print(
                             f"[generation] eos_parse_complete at step "
                             f"{step_idx + 1} — EOS selected with $END accepted",
                             flush=True,
                         )
                     else:
                         early_termination = "parse_complete"
-                        print(
+                        _safe_console_print(
                             f"[generation] parse_complete at step {step_idx + 1} "
                             f"— rejected non-EOS continuation "
                             f"{step.selected_token!r} after valid module",
@@ -2017,14 +1986,14 @@ class LLMService:
                         clean_up_tokenization_spaces=True,
                     )
                     if _generated_text_is_parse_valid(partial_text):
-                        print(
+                        _safe_console_print(
                             f"[generation] prefix became parse-valid at step "
                             f"{step_idx + 1} — next step is finalization "
-                            f"(EOS↔$END)",
+                            f"(EOS<->$END)",
                             flush=True,
                         )
                     elif step_idx + 1 == normal_max and absolute_max > normal_max:
-                        print(
+                        _safe_console_print(
                             f"[generation] normal_max={normal_max} reached but "
                             f"output not yet parse-valid — continuing constrained "
                             f"generation up to absolute_max={absolute_max}",
@@ -2040,7 +2009,7 @@ class LLMService:
                         _generation_id,
                         early_termination,
                     )
-                    print(f"[TRACE] EOS at step {step_idx + 1}", flush=True)
+                    _safe_console_print(f"[TRACE] EOS at step {step_idx + 1}", flush=True)
                     break
 
                 # ── Whitespace stall detection ──────────────────────────────
@@ -2164,7 +2133,7 @@ class LLMService:
             "generated_text_preview": generated_text[:120],
         }
 
-        print(
+        _safe_console_print(
             f"[TRACE end] gen_id={_generation_id} steps={n_steps} "
             f"syncode_active={n_syncode_active}/{n_steps} "
             f"fallback={n_fallback}/{n_steps} "
@@ -2205,11 +2174,11 @@ class LLMService:
             early_termination=early_termination,
         )
 
-        print(
+        _safe_console_print(
             f"[parser-tree] parsing final output only (len={len(generated_text)})",
             flush=True,
         )
-        print(
+        _safe_console_print(
             f"[generation] stopped_reason={early_termination!r} "
             f"eos_allowed_at_completion={eos_allowed_at_completion}",
             flush=True,

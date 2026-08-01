@@ -9,6 +9,8 @@ Separates three statuses:
 
 from __future__ import annotations
 
+from app.console_safe import _safe_console_print
+
 import importlib.util
 import json
 import logging
@@ -167,26 +169,26 @@ def run_grammar_diagnostics(
 
 def log_grammar_diagnostics(diag: GrammarDiagnosticResult) -> None:
     """Print startup diagnostic lines requested for research visibility."""
-    print(f"[grammar] active verilog grammar path: {diag.grammar_path}", flush=True)
+    _safe_console_print(f"[grammar] active verilog grammar path: {diag.grammar_path}", flush=True)
     if diag.lark_compile_ok:
-        print("[grammar] lark parse compile: success", flush=True)
+        _safe_console_print("[grammar] lark parse compile: success", flush=True)
     else:
-        print("[grammar] lark parse compile: failure", flush=True)
-        print(f"[grammar] error details: {diag.lark_compile_error}", flush=True)
+        _safe_console_print("[grammar] lark parse compile: failure", flush=True)
+        _safe_console_print(f"[grammar] error details: {diag.lark_compile_error}", flush=True)
 
     if diag.syncode_grammar_ok:
-        print("[grammar] syncode grammar load: success", flush=True)
+        _safe_console_print("[grammar] syncode grammar load: success", flush=True)
     else:
-        print("[grammar] syncode grammar load: failure", flush=True)
+        _safe_console_print("[grammar] syncode grammar load: failure", flush=True)
         err = diag.syncode_grammar_error or diag.syncode_init_error
-        print(f"[grammar] error details: {err}", flush=True)
+        _safe_console_print(f"[grammar] error details: {err}", flush=True)
 
     if not diag.syncode_grammar_ok:
-        print("[grammar] syncode mask store: unavailable", flush=True)
+        _safe_console_print("[grammar] syncode mask store: unavailable", flush=True)
     elif diag.syncode_mask_store_ok:
-        print("[grammar] syncode mask store: loaded", flush=True)
+        _safe_console_print("[grammar] syncode mask store: loaded", flush=True)
     elif diag.syncode_mask_store_error:
-        print("[grammar] syncode mask store: unavailable", flush=True)
-        print(f"[grammar] error details: {diag.syncode_mask_store_error}", flush=True)
+        _safe_console_print("[grammar] syncode mask store: unavailable", flush=True)
+        _safe_console_print(f"[grammar] error details: {diag.syncode_mask_store_error}", flush=True)
     else:
-        print("[grammar] syncode mask store: not probed (awaiting tokenizer)", flush=True)
+        _safe_console_print("[grammar] syncode mask store: not probed (awaiting tokenizer)", flush=True)

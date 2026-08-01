@@ -14,6 +14,8 @@ Comment handling:
 
 from __future__ import annotations
 
+from app.console_safe import _safe_console_print
+
 import importlib.util
 import logging
 import os
@@ -430,14 +432,14 @@ def build_parse_tree(code: str) -> ParseTreeResult:
     UnexpectedEOF = getattr(lark_exceptions, "UnexpectedEOF", None) if lark_exceptions else None
 
     try:
-        print(
+        _safe_console_print(
             f"[parser-tree] parsing final output length: {len(parse_target)}",
             flush=True,
         )
         parser = _lark_parser()
         tree = parser.parse(parse_target)
         tree_text = tree.pretty()
-        print(
+        _safe_console_print(
             f"[parser-tree] parse success: True  tree length: {len(tree_text)}",
             flush=True,
         )
@@ -478,7 +480,7 @@ def build_parse_tree(code: str) -> ParseTreeResult:
         except Exception:
             pass
 
-        print(
+        _safe_console_print(
             f"[parser-tree] parse success: False  error: {error_type}: {error_msg[:120]}",
             flush=True,
         )
@@ -495,7 +497,7 @@ def build_parse_tree(code: str) -> ParseTreeResult:
                 previous=previous,
             )
         except Exception as ctx_exc:  # noqa: BLE001
-            print(
+            _safe_console_print(
                 f"[parser-tree] failure context build error (non-fatal): {ctx_exc}",
                 flush=True,
             )

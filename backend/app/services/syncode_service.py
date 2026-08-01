@@ -41,7 +41,9 @@ class SyncodeService:
             self._syncode = syncode
             self._available = True
         except ImportError:
-            print(
+            from app.console_safe import _safe_console_print  # noqa: PLC0415
+
+            _safe_console_print(
                 "[SyncodeService] syncode package not found — "
                 "constrained decoding disabled. "
                 "Install: pip install git+https://github.com/uiuc-focal-lab/syncode.git"
