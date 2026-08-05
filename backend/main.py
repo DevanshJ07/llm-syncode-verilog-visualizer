@@ -21,27 +21,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import generate as generate_router
 from app.api.routes import experiments as experiments_router
 from app.api.routes import debug as debug_router
-from app.console_safe import _safe_console_print, configure_app_console_logging
 from app.core.config import settings
 from app.services.grammar_diagnostics import log_grammar_diagnostics, run_grammar_diagnostics
 from app.services.llm_service import llm_service
-
-# Project-owned StreamHandlers: escape unsupported glyphs on Windows consoles.
-configure_app_console_logging()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle hook."""
-    configure_app_console_logging()
     diag = run_grammar_diagnostics(build_mask_store=False)
     log_grammar_diagnostics(diag)
 
-    _safe_console_print(
-        f"[Startup] {settings.app_name} ready (model loads lazily on first request)."
-    )
+    print(f"[Startup] {settings.app_name} ready (model loads lazily on first request).")
     yield
-    _safe_console_print("[Shutdown] Cleaning up.")
+    print("[Shutdown] Cleaning up.")
 
 
 app = FastAPI(

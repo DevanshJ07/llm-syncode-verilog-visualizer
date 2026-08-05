@@ -7,7 +7,6 @@ import traceback
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.console_safe import _safe_console_print
 from app.models.schemas import GenerateRequest, GenerateResponse, ParserFailureContextSchema
 from app.services.experiment_store import store
 from app.services.generation_validation import GenerationFailedError, SyncodeUnavailableError
@@ -101,11 +100,11 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     mode = "syncode" if request.use_syncode else "raw"
 
     # Immediate stdout — must appear before model/SynCode load (can take minutes).
-    _safe_console_print("[generate] request received", flush=True)
-    _safe_console_print(f"[generate] backend_mode: {mode}", flush=True)
-    _safe_console_print("[generate] grammar: verilog", flush=True)
-    _safe_console_print(f"[generate] max_tokens: {request.max_new_tokens}", flush=True)
-    _safe_console_print(f"[generate] prompt length: {len(request.prompt)}", flush=True)
+    print("[generate] request received", flush=True)
+    print(f"[generate] backend_mode: {mode}", flush=True)
+    print("[generate] grammar: verilog", flush=True)
+    print(f"[generate] max_tokens: {request.max_new_tokens}", flush=True)
+    print(f"[generate] prompt length: {len(request.prompt)}", flush=True)
 
     log.info(
         "[API /generate request] mode=%s prompt_len=%d max_new_tokens=%d "
@@ -126,7 +125,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     )
 
     try:
-        _safe_console_print("[generate] loading model...", flush=True)
+        print("[generate] loading model...", flush=True)
         (
             generated_text,
             steps,
@@ -142,19 +141,16 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             top_p=request.top_p,
             repetition_penalty=request.repetition_penalty,
         )
-        _safe_console_print("[generate] generation complete", flush=True)
+        print("[generate] generation complete", flush=True)
     except SyncodeUnavailableError as exc:
-        _safe_console_print(f"[generate] SynCode unavailable: {exc}", flush=True)
+        print(f"[generate] SynCode unavailable: {exc}", flush=True)
         raise _http_500_from_syncode_unavailable(exc) from exc
     except GenerationFailedError as exc:
-        _safe_console_print(f"[generate] generation failed: {exc}", flush=True)
+        print(f"[generate] generation failed: {exc}", flush=True)
         raise _http_500_from_generation_error(exc) from exc
     except Exception as exc:
-        _safe_console_print(f"[generate] exception: {type(exc).__name__}: {exc}", flush=True)
-        try:
-            traceback.print_exc()
-        except Exception:
-            _safe_console_print(traceback.format_exc(), flush=True)
+        print(f"[generate] exception: {type(exc).__name__}: {exc}", flush=True)
+        traceback.print_exc()
         log.error(
             "[API /generate exception] %s: %s\n%s",
             type(exc).__name__,
@@ -244,7 +240,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     )
 
     if is_syncode_fail_fast:
-        _safe_console_print(
+        print(
             f"[generation] stopping due to parser error, not continuing raw "
             f"(allow_syncode_fallback={settings.allow_syncode_fallback})",
             flush=True,

@@ -1,6 +1,32 @@
 start: module+ END_OF_TEXT?
 
-module: "module" name_of_module list_of_ports? ";" module_item* "endmodule"
+// ---------------------------------------------------------------------------
+// Reserved-word terminals are declared BEFORE IDENTIFIER with the same
+// priority.  Lark selects by (priority, then longest match, then definition
+// order).  Equal priority + longer IDENTIFIER match keeps input_sig / wire_sig
+// as a single IDENTIFIER, while exact "input" / "wire" still lex as keywords.
+// SynCode/interegular cannot use \b or (?!...).
+// ---------------------------------------------------------------------------
+MODULE: "module"
+ENDMODULE: "endmodule"
+INPUT: "input"
+OUTPUT: "output"
+INOUT: "inout"
+WIRE: "wire"
+REG: "reg"
+ASSIGN: "assign"
+ALWAYS: "always"
+BEGIN: "begin"
+END: "end"
+IF: "if"
+ELSE: "else"
+
+// Keep otherwise-unused reserved terminals in the lexer (Lark drops unused
+// terminals).  The "!UNREACHABLE_RESERVED!" sentinel never appears in model
+// output, so this alternative is not a productive Verilog construct.
+_keep_reserved_terminals: "!UNREACHABLE_RESERVED!" (REG | ALWAYS | BEGIN | END | IF | ELSE)
+
+module: MODULE name_of_module list_of_ports? ";" module_item* ENDMODULE
 
 ?name_of_module: IDENTIFIER
 
@@ -14,17 +40,17 @@ list_of_ports: "(" [port ("," port)*] ")"
             | net_declaration
             | module_instantiation
             | continuous_assign
+            | _keep_reserved_terminals
 
 
-// 3. Declarations
-// A simple vector range such as [7:0] is now allowed.
-input_declaration: "input" range? list_of_variables ";"
+// 3. Declarations — non-ANSI only (no ANSI port-list declarations).
+input_declaration: INPUT range? list_of_variables ";"
 
-output_declaration: "output" range? list_of_variables ";"
+output_declaration: OUTPUT range? list_of_variables ";"
 
-inout_declaration: "inout" range? list_of_variables ";"
+inout_declaration: INOUT range? list_of_variables ";"
 
-net_declaration: "wire" range? list_of_variables ";"
+net_declaration: WIRE range? list_of_variables ";"
 
 range: "[" NUMBER ":" NUMBER "]"
 
@@ -32,7 +58,7 @@ list_of_variables: IDENTIFIER ("," IDENTIFIER)*
 
 
 // 4. Continuous assignments
-continuous_assign: "assign" list_of_assignments ";"
+continuous_assign: ASSIGN list_of_assignments ";"
 
 list_of_assignments: assignment ("," assignment)*
 
@@ -57,7 +83,6 @@ named_port_connection: "." IDENTIFIER "(" expression? ")"
 
 
 // 6. Expressions
-// Precedence goes from lowest at the top to highest at the bottom.
 ?expression: conditional
 
 ?conditional: logical_or
@@ -116,8 +141,6 @@ unary_operator: "!" | "~" | "+" | "-"
 IDENTIFIER: NORMAL_IDENTIFIER
           | ESCAPED_IDENTIFIER
 
-# SynCode/interegular DFA builder does not support \b or negative lookahead.
-# Reserved words are enforced by parser literal terminals (e.g. "input").
 NORMAL_IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_$]*/
 
 ESCAPED_IDENTIFIER: /\\[^\s]+/
