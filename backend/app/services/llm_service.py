@@ -49,6 +49,16 @@ from app.services.grammar_diagnostics import (
     run_grammar_diagnostics,
 )
 from app.services.verilog_validation import parse_with_verilog_grammar
+from app.models.syncode_parser_evidence import (
+    SyncodeParserEvidence,
+    failed_syncode_parser_evidence,
+    unavailable_syncode_parser_evidence,
+)
+from app.services.syncode_parser_evidence import (
+    format_legacy_accept_sequences,
+    serialize_parse_result,
+    syncode_package_version,
+)
 
 if TYPE_CHECKING:
     from transformers import PreTrainedModel, PreTrainedTokenizerBase
@@ -357,10 +367,14 @@ class _SyncodeConstraint:
 
         Interception points inside mask_scores:
           • ge._parse_partial_output  → captures skip flag and partial_output
-          • ge.dfa_mask_store.get_accept_mask → captures accept_mask stats
+          • ge.dfa_mask_store.get_accept_mask → captures the exact ParseResult
+            used to build the token mask (Phase 4A.1 structured evidence) plus
+            accept_mask stats
 
         This is a pure read-side patch: the original logic runs unchanged;
-        we only observe inputs and outputs at each internal call.
+        we only observe inputs and outputs at each internal call.  The original
+        ``get_accept_mask`` is invoked exactly once per call; capture failures
+        never alter the returned mask.
         """
         if self._processor is None:
             self._patch_status: dict = {"installed": False, "reason": "processor is None"}
@@ -371,6 +385,7 @@ class _SyncodeConstraint:
         self._forensic_step: list[int] = [0]
         forensic_log: list[dict] = []
         self._forensic_log = forensic_log
+        self._parser_evidence_log: list[dict] = []
 
         original_mask_scores = ge.mask_scores
         original_get_accept_mask = ge.dfa_mask_store.get_accept_mask
@@ -378,6 +393,18 @@ class _SyncodeConstraint:
         original_get_terms = ge.inc_parser.get_acceptable_next_terminals
 
         ws_ids = self._whitespace_ids
+        _syn_version = syncode_package_version()
+        _tok = getattr(ge, "tokenizer", None)
+        _raw_eos = getattr(_tok, "eos_token_id", None) if _tok is not None else None
+        if isinstance(_raw_eos, (list, tuple)):
+            _app_eos_ids = [int(x) for x in _raw_eos]
+            _syn_eos_id = int(_raw_eos[0]) if _raw_eos else None
+        elif _raw_eos is not None:
+            _app_eos_ids = [int(_raw_eos)]
+            _syn_eos_id = int(_raw_eos)
+        else:
+            _app_eos_ids = []
+            _syn_eos_id = None
 
         def patched_mask_scores(input_ids: "torch.Tensor", scores: "torch.Tensor") -> "torch.Tensor":
             step = self._forensic_step[0]
@@ -449,10 +476,45 @@ class _SyncodeConstraint:
                 return res, skip
 
             # --- intercept get_accept_mask --------------------------------------
+            # Capture the exact ParseResult passed into get_accept_mask — this is
+            # the parser result that builds the token mask (Phase 4A.1).
             _mask_stats: list[dict] = []
+            _structured_evidence: list = []
 
             def patched_get_accept_mask(res: object) -> "torch.Tensor":
+                # Call the original exactly once; never replace its result.
                 mask = original_get_accept_mask(res)
+                try:
+                    prefix_for_hash = (
+                        partial_str
+                        if isinstance(partial_str, str)
+                        and not partial_str.startswith("<get_partial_outputs failed")
+                        else None
+                    )
+                    evidence = serialize_parse_result(
+                        res,
+                        mask_call_index=step,
+                        generated_token_count_before_selection=step,
+                        generated_prefix=prefix_for_hash,
+                        syncode_version=_syn_version,
+                        accept_mask=mask,
+                        syncode_tokenizer_eos_token_id=_syn_eos_id,
+                        application_eos_token_ids=_app_eos_ids,
+                    )
+                    _structured_evidence.append(evidence)
+                except Exception as _cap_exc:
+                    # Capture failures must not alter masking.
+                    _structured_evidence.append(
+                        failed_syncode_parser_evidence(
+                            error=f"{type(_cap_exc).__name__}: {_cap_exc}",
+                            warnings=[
+                                "capture serialization failure; mask path unaffected"
+                            ],
+                            mask_call_index=step,
+                            syncode_version=_syn_version,
+                        )
+                    )
+
                 n_acc = int(mask.sum())
                 total = int(mask.numel())
                 all_v = bool(mask.all())
@@ -489,7 +551,7 @@ class _SyncodeConstraint:
                     "sample_ws_invalid_ids": sample_ws_invalid,
                     "first_valid_ids": first_valid,
                     "accept_seqs_at_mask": [
-                        str(s) for s in list(getattr(res, "accept_sequences", []))[:6]
+                        str(s) for s in list(getattr(res, "accept_sequences", []) or [])[:6]
                     ],
                 })
                 return mask
@@ -533,6 +595,33 @@ class _SyncodeConstraint:
             else:
                 diagnosis = f"MASKING_APPLIED: {n_newly_inf} tokens newly -inf"
 
+            if _structured_evidence:
+                structured_ev = _structured_evidence[0]
+            else:
+                structured_ev = unavailable_syncode_parser_evidence(
+                    reason=(
+                        "get_accept_mask was not called for this mask_scores "
+                        "invocation (parse skip or no accept mask)"
+                    ),
+                    warnings=[
+                        "no ParseResult captured at get_accept_mask; "
+                        "not a recomputed substitute"
+                    ],
+                    mask_call_index=step,
+                )
+
+            if structured_ev.status == "recorded":
+                legacy_accept_seqs = format_legacy_accept_sequences(
+                    structured_ev, max_entries=6
+                )
+            else:
+                legacy_accept_seqs = _accept_seqs[:6]
+
+            try:
+                self._parser_evidence_log.append(structured_ev.model_dump())
+            except Exception:
+                pass
+
             step_record: dict = {
                 "step": step,
                 "partial_output": partial_str[:100],
@@ -543,8 +632,13 @@ class _SyncodeConstraint:
                 "skip": skip_flag,
                 "parse_input": _parse_inputs[:2],
                 "parse_exception": _parse_exceptions[:2],
-                "accept_seqs": _accept_seqs[:6],
-                "remainder_state": _rem_state[:1],
+                "accept_seqs": legacy_accept_seqs,
+                "remainder_state": (
+                    [structured_ev.remainder_state]
+                    if structured_ev.remainder_state
+                    else _rem_state[:1]
+                ),
+                "syncode_parser_evidence": structured_ev.model_dump(),
                 "mask_stats": _mask_stats[:1],
                 "n_changed": n_changed,
                 "n_newly_inf": n_newly_inf,
@@ -1518,6 +1612,11 @@ class LLMService:
                 self._syncode._forensic_step[0] = 0
             if hasattr(self._syncode, "_forensic_log"):
                 self._syncode._forensic_log.clear()
+            if hasattr(self._syncode, "_parser_evidence_log"):
+                self._syncode._parser_evidence_log.clear()
+            # Prevent mask-call counter leaking across generations.
+            if hasattr(self._syncode, "_mask_call_count"):
+                self._syncode._mask_call_count = 0
             log.debug("Syncode parse state reset for new generation")
 
         # ── Format prompt ───────────────────────────────────────────────────
@@ -2165,24 +2264,75 @@ class LLMService:
             early_termination = "parse_complete"
             eos_allowed_at_completion = True
 
-        # ── Attach accept_sequences and constraint_applied from forensic log ─
-        # The forensic log records which Lark grammar terminals are valid at
-        # each parse state.  We attach them to the corresponding DecodingStep
-        # so the frontend can display "allowed grammar continuations" per step.
+        # ── Attach SynCode parser evidence + legacy accept_sequences ────────
+        # Structured syncode_parser_evidence is authoritative (Phase 4A.1).
+        # Legacy accept_sequences is populated from it for backward compatibility.
         if effective_syncode and self._syncode is not None:
             forensic_entries = self._syncode.forensic_log
             # Build map: 0-based forensic step index → record (skip sentinels)
             forensic_map: dict[int, dict] = {}
+            mask_call_count = 0
             for entry in forensic_entries:
                 if entry.get("_sentinel"):
                     continue
+                mask_call_count += 1
                 fidx = entry.get("step")
                 if isinstance(fidx, int) and fidx not in forensic_map:
                     forensic_map[fidx] = entry
+
+            cardinality_warning: str | None = None
+            if mask_call_count != len(steps):
+                cardinality_warning = (
+                    f"SynCode mask-call count ({mask_call_count}) diverges from "
+                    f"generated step count ({len(steps)})"
+                )
+                print(
+                    f"[SYNCODE EVIDENCE] WARNING: {cardinality_warning}",
+                    flush=True,
+                )
+
             for i, step_obj in enumerate(steps):
                 fentry = forensic_map.get(i)
                 if fentry:
-                    step_obj.accept_sequences = fentry.get("accept_seqs", [])[:8]
+                    raw_ev = fentry.get("syncode_parser_evidence")
+                    if isinstance(raw_ev, dict):
+                        try:
+                            ev = SyncodeParserEvidence.model_validate(raw_ev)
+                        except Exception as _ev_exc:
+                            ev = unavailable_syncode_parser_evidence(
+                                reason=(
+                                    f"invalid syncode_parser_evidence payload: "
+                                    f"{type(_ev_exc).__name__}"
+                                ),
+                                mask_call_index=i,
+                            )
+                    else:
+                        ev = unavailable_syncode_parser_evidence(
+                            reason="syncode_parser_evidence missing from forensic log",
+                            mask_call_index=i,
+                        )
+                    if cardinality_warning:
+                        ev = ev.model_copy(
+                            update={
+                                "warnings": list(ev.warnings) + [cardinality_warning]
+                            }
+                        )
+                    step_obj.syncode_parser_evidence = ev
+                    if ev.status == "recorded":
+                        step_obj.accept_sequences = format_legacy_accept_sequences(ev)
+                    else:
+                        # Preserve any debug strings; do not invent sequences.
+                        step_obj.accept_sequences = list(
+                            fentry.get("accept_seqs", []) or []
+                        )[:8]
+                elif cardinality_warning:
+                    step_obj.syncode_parser_evidence = (
+                        unavailable_syncode_parser_evidence(
+                            reason="no forensic mask entry for this step",
+                            warnings=[cardinality_warning],
+                            mask_call_index=i,
+                        )
+                    )
                 step_obj.constraint_applied = step_obj.syncode_active
 
         # ── Write debug trace ────────────────────────────────────────────────

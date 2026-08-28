@@ -146,12 +146,22 @@ def _load_lark_module():
     installable dependency — it bundles larkm instead.  The fallback loads
     larkm *without* executing ``syncode/__init__.py`` (which has an optional
     data-file dependency that may not be present).
+
+    If ``syncode.larkm`` is already imported (e.g. live SynCode loaded first),
+    reuse that module.  Re-executing / overwriting ``sys.modules['syncode.larkm']``
+    while old submodules remain cached splits the package and corrupts
+    position/error metadata used by Phase 3 parser analysis.
     """
     try:
         import lark  # noqa: PLC0415
         return lark
     except ImportError:
         pass
+
+    existing = sys.modules.get("syncode.larkm")
+    if existing is not None and getattr(existing, "Lark", None) is not None:
+        sys.modules.setdefault("lark", existing)
+        return existing
 
     # Locate syncode/larkm under any sys.path entry.
     for path_entry in sys.path:

@@ -12,6 +12,10 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from app.models.parser_analysis import ParserAnalysis, unavailable_parser_analysis
+from app.models.syncode_parser_evidence import (
+    SyncodeParserEvidence,
+    unavailable_syncode_parser_evidence,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +128,8 @@ class DecodingStep(BaseModel):
         masked_percentage, probability_mass_removed
 
     Grammar forensics (populated from Syncode forensic log):
-        accept_sequences, constraint_applied
+        accept_sequences (legacy strings), syncode_parser_evidence (authoritative),
+        constraint_applied
     """
     step: int
     context: str  # decoded text up to (but not including) this step's token
@@ -160,9 +165,16 @@ class DecodingStep(BaseModel):
     probability_mass_removed: float = 0.0  # Σ raw_prob of all masked tokens
 
     # --- Grammar forensics ------------------------------------------------
-    # Lark terminal names / grammar symbols allowed at this parse state.
-    # Populated from the Syncode forensic log; may be empty in raw mode.
+    # Legacy stringified SynCode AcceptSequence reprs (deterministic format).
+    # Authoritative structured capture is ``syncode_parser_evidence``.
+    # These are SynCode accept sequences — not Lark expected terminals and not
+    # the tokenizer vocabulary tokens allowed by the final mask.
     accept_sequences: list[str] = Field(default_factory=list)
+    # Exact SynCode ParseResult used to build this step's token mask (Phase 4A.1).
+    # Defaults unavailable so older stored experiments still load.
+    syncode_parser_evidence: SyncodeParserEvidence = Field(
+        default_factory=unavailable_syncode_parser_evidence
+    )
     # True when Syncode grammar masking was applied and changed at least one logit.
     # Alias for syncode_active kept here for explicit API clarity.
     constraint_applied: bool = False

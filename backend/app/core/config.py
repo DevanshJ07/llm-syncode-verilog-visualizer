@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     parser_analysis_max_nodes: int = 5_000
     parser_analysis_max_depth: int = 64
 
+    # Phase 4A.1 — SynCode ParseResult evidence capture limits (live masking only).
+    syncode_parser_evidence_max_sequences: int = 64
+    syncode_parser_evidence_max_terminals_per_sequence: int = 16
+    syncode_parser_evidence_max_terminal_chars: int = 64
+    syncode_parser_evidence_max_remainder_bytes: int = 512
+
 
 # Singleton — import `settings` everywhere, never instantiate Settings directly.
 settings = Settings()
