@@ -369,8 +369,20 @@ export function evidenceChannelsForStep(step: NormalizedTraceStep): EvidenceChan
       status: kindOf(step.expected_terminals),
     },
     {
-      channel: "SynCode accept sequences",
+      channel: "SynCode accept sequences (legacy channel)",
       status: kindOf(step.syncode_accept_sequences),
+    },
+    {
+      channel: "SynCode parser evidence (primary)",
+      status: step.syncode_parser_evidence
+        ? kindOf(step.syncode_parser_evidence)
+        : "unavailable",
+    },
+    {
+      channel: "SynCode parser evidence (recorded sibling)",
+      status: step.syncode_parser_evidence_recorded
+        ? kindOf(step.syncode_parser_evidence_recorded)
+        : "unavailable",
     },
     { channel: "Remainder state", status: kindOf(step.remainder_state) },
     { channel: "EOS eligibility", status: kindOf(step.eos_eligible) },

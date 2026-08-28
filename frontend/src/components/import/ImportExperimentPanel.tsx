@@ -19,10 +19,12 @@ interface ImportExperimentPanelProps {
 export function ImportExperimentPanel({ onImported }: ImportExperimentPanelProps) {
   const router = useRouter();
   const fileInputId = useId();
-  const recomputeId = useId();
+  const recomputeGrammarId = useId();
+  const recomputeParserId = useId();
 
   const [file, setFile] = useState<File | null>(null);
-  const [recompute, setRecompute] = useState(false);
+  const [recomputeGrammar, setRecomputeGrammar] = useState(false);
+  const [recomputeParserEvidence, setRecomputeParserEvidence] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
@@ -49,7 +51,10 @@ export function ImportExperimentPanel({ onImported }: ImportExperimentPanelProps
     setError(null);
     setSuccessId(null);
     try {
-      const result = await postImportBundle(file, recompute);
+      const result = await postImportBundle(file, {
+        recomputeWithCurrentGrammar: recomputeGrammar,
+        recomputeSyncodeParserEvidence: recomputeParserEvidence,
+      });
       setSuccessId(result.experiment_id);
       onImported?.(result.experiment_id);
       router.push(`/imported-experiment/${result.experiment_id}`);
@@ -97,21 +102,43 @@ export function ImportExperimentPanel({ onImported }: ImportExperimentPanelProps
       </div>
 
       <label
-        htmlFor={recomputeId}
+        htmlFor={recomputeGrammarId}
         className="flex cursor-pointer items-start gap-2 text-sm text-[#e6edf3]"
       >
         <input
-          id={recomputeId}
+          id={recomputeGrammarId}
           type="checkbox"
-          checked={recompute}
+          checked={recomputeGrammar}
           disabled={loading}
-          onChange={(e) => setRecompute(e.target.checked)}
+          onChange={(e) => setRecomputeGrammar(e.target.checked)}
           className="mt-1"
         />
         <span>
           Recompute final grammar verdict with current canonical grammar
           <span className="mt-0.5 block text-xs text-[#8b949e]">
             Optional. Default off — preserves recorded grammar evidence only.
+          </span>
+        </span>
+      </label>
+
+      <label
+        htmlFor={recomputeParserId}
+        className="flex cursor-pointer items-start gap-2 text-sm text-[#e6edf3]"
+      >
+        <input
+          id={recomputeParserId}
+          type="checkbox"
+          checked={recomputeParserEvidence}
+          disabled={loading}
+          onChange={(e) => setRecomputeParserEvidence(e.target.checked)}
+          className="mt-1"
+        />
+        <span>
+          Recompute SynCode parser evidence for each trace step
+          <span className="mt-0.5 block text-xs text-[#8b949e]">
+            Uses the current canonical grammar and SynCode incremental parser. It
+            does not replay the original model tokenizer mask. Default off —
+            independent of grammar-verdict recomputation.
           </span>
         </span>
       </label>

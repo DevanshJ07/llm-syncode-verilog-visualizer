@@ -233,16 +233,37 @@ export async function listExperiments(): Promise<string[]> {
 /**
  * POST /import/bundle — multipart ZIP upload.
  * Do not set Content-Type manually (browser must supply the boundary).
+ *
+ * Grammar-verdict and SynCode parser-evidence recomputation are independent
+ * FormData fields (both default false).
  */
 export async function postImportBundle(
   file: File,
-  recomputeWithCurrentGrammar = false
+  options:
+    | boolean
+    | {
+        recomputeWithCurrentGrammar?: boolean;
+        recomputeSyncodeParserEvidence?: boolean;
+      } = false
 ): Promise<NormalizedExperiment> {
+  const recomputeWithCurrentGrammar =
+    typeof options === "boolean"
+      ? options
+      : Boolean(options.recomputeWithCurrentGrammar);
+  const recomputeSyncodeParserEvidence =
+    typeof options === "boolean"
+      ? false
+      : Boolean(options.recomputeSyncodeParserEvidence);
+
   const form = new FormData();
   form.append("file", file);
   form.append(
     "recompute_with_current_grammar",
     recomputeWithCurrentGrammar ? "true" : "false"
+  );
+  form.append(
+    "recompute_syncode_parser_evidence",
+    recomputeSyncodeParserEvidence ? "true" : "false"
   );
   return request<NormalizedExperiment>(
     "/import/bundle",

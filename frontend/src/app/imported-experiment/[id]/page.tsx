@@ -207,6 +207,35 @@ export default function ImportedExperimentPage() {
               )}
             </p>
           </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+              Recompute grammar verdict
+            </p>
+            <p className="mt-0.5 font-mono text-sm text-[#e6edf3]">
+              {isUnavailable(runtime)
+                ? "Unavailable"
+                : metaDictGet(runtime, "recompute_with_current_grammar") === true
+                  ? "Requested"
+                  : metaDictGet(runtime, "recompute_with_current_grammar") === false
+                    ? "Not requested"
+                    : "Unavailable"}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+              Recompute SynCode parser evidence
+            </p>
+            <p className="mt-0.5 font-mono text-sm text-[#e6edf3]">
+              {isUnavailable(runtime)
+                ? "Unavailable"
+                : metaDictGet(runtime, "recompute_syncode_parser_evidence") === true
+                  ? "Requested"
+                  : metaDictGet(runtime, "recompute_syncode_parser_evidence") ===
+                      false
+                    ? "Not requested"
+                    : "Unavailable"}
+            </p>
+          </div>
         </div>
       </Card>
 

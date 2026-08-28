@@ -13,16 +13,19 @@
  *   • Syncode impact metrics card
  *   • Entropy before → after (dual bars + delta badge)
  *   • Side-by-side: BEFORE SYNCODE | AFTER SYNCODE
- *   • MASKED TOKENS section (scrollable, red, shows raw_prob)
- *   • Accepted grammar terminals (accept_sequences)
+ *   • SynCode impact metrics / before-after / masked tokenizer tokens
+ *   • SynCode structured parser evidence (accept sequences)
+ *   • Lark incremental parser state
  */
 
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { IncrementalParserStatePanel } from "@/components/visualization/IncrementalParserStatePanel";
+import { SyncodeParserEvidencePanel } from "@/components/visualization/SyncodeParserEvidencePanel";
 import { TokenProbabilityChart } from "@/components/visualization/TokenProbabilityChart";
 import { formatPct } from "@/lib/utils";
 import type { DecodingStep, MaskedTokenEntry, TopToken } from "@/types/decoding";
+import { isStructurallyAvailable } from "@/types/syncodeParserEvidence";
 
 interface Props {
   step: DecodingStep;
@@ -211,28 +214,6 @@ function MaskedTokensPanel({ tokens }: { tokens: MaskedTokenEntry[] }) {
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
-  );
-}
-
-/** Accepted grammar terminals from the incremental Lark parser state. */
-function AcceptSequencesPanel({ seqs }: { seqs: string[] }) {
-  if (seqs.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]">
-        Allowed grammar terminals
-      </span>
-      <div className="flex flex-wrap gap-1">
-        {seqs.map((s, i) => (
-          <span
-            key={i}
-            className="rounded border border-[#30363d] bg-[#161b22] px-1.5 py-0.5 font-mono text-[11px] text-[#58a6ff]"
-          >
-            {s}
-          </span>
-        ))}
       </div>
     </div>
   );
@@ -481,89 +462,129 @@ export function StepViewer({ step, mode }: Props) {
                 )}
               </div>
 
-              {/* Side-by-side: BEFORE | AFTER */}
-              <div className="grid gap-2.5 lg:grid-cols-2">
-                {/* BEFORE SYNCODE */}
-                <div className="flex flex-col gap-2 rounded-md border border-[#21262d] bg-[#0d1117] p-2.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#8b949e]">
-                      Before SynCode masking
-                    </p>
-                    <span className="font-mono text-[11px] text-[#8b949e]">raw LLM distribution</span>
-                  </div>
-                  <TokenProbabilityChart
-                    candidates={beforeTopTokens.length > 0 ? beforeTopTokens : step.top_tokens}
-                    selectedTokenId={selectedId}
-                    maskedIds={step.masked_tokens.map((m) => m.token_id)}
-                  />
-                  <ProbTable
-                    rows={(beforeTopTokens.length > 0 ? beforeTopTokens : step.top_tokens).map((t) => ({
-                      token_id: t.token_id,
-                      token: t.token,
-                      probability: t.probability,
-                    }))}
-                    selectedId={selectedId}
-                    maskedIdSet={maskedIdSet}
-                  />
+              {/* ── Layer 3: Tokenizer mask ─────────────────────────────── */}
+              <section className="flex flex-col gap-2">
+                <div>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]">
+                    Tokenizer mask
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-[#484f58]">
+                    Tokenizer-mask evidence describes actual vocabulary tokens /
+                    logits allowed or blocked after the SynCode accept mask. Not
+                    SynCode accept sequences and not Lark expected terminals.
+                  </p>
                 </div>
 
-                {/* AFTER SYNCODE */}
-                <div className="flex flex-col gap-2 rounded-md border border-[#58a6ff]/30 bg-[#0d1117] p-2.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#58a6ff]">
-                      After SynCode masking
-                    </p>
-                    <span className="font-mono text-[11px] text-[#8b949e]">
-                      {hasAfterData ? "constrained distribution" : "no valid candidates"}
+                {/* Side-by-side: BEFORE | AFTER */}
+                <div className="grid gap-2.5 lg:grid-cols-2">
+                  {/* BEFORE SYNCODE */}
+                  <div className="flex flex-col gap-2 rounded-md border border-[#21262d] bg-[#0d1117] p-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase tracking-wider text-[#8b949e]">
+                        Before SynCode masking
+                      </p>
+                      <span className="font-mono text-[11px] text-[#8b949e]">
+                        raw LLM distribution
+                      </span>
+                    </div>
+                    <TokenProbabilityChart
+                      candidates={
+                        beforeTopTokens.length > 0 ? beforeTopTokens : step.top_tokens
+                      }
+                      selectedTokenId={selectedId}
+                      maskedIds={step.masked_tokens.map((m) => m.token_id)}
+                    />
+                    <ProbTable
+                      rows={(beforeTopTokens.length > 0
+                        ? beforeTopTokens
+                        : step.top_tokens
+                      ).map((t) => ({
+                        token_id: t.token_id,
+                        token: t.token,
+                        probability: t.probability,
+                      }))}
+                      selectedId={selectedId}
+                      maskedIdSet={maskedIdSet}
+                    />
+                  </div>
+
+                  {/* AFTER SYNCODE */}
+                  <div className="flex flex-col gap-2 rounded-md border border-[#58a6ff]/30 bg-[#0d1117] p-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase tracking-wider text-[#58a6ff]">
+                        After SynCode masking
+                      </p>
+                      <span className="font-mono text-[11px] text-[#8b949e]">
+                        {hasAfterData
+                          ? "constrained distribution"
+                          : "no valid candidates"}
+                      </span>
+                    </div>
+                    {hasAfterData ? (
+                      <>
+                        <TokenProbabilityChart
+                          candidates={validAsTopTokens}
+                          selectedTokenId={selectedId}
+                        />
+                        <ProbTable
+                          rows={validAsTopTokens.map((t) => ({
+                            token_id: t.token_id,
+                            token: t.token,
+                            probability: t.probability,
+                          }))}
+                          selectedId={selectedId}
+                        />
+                      </>
+                    ) : (
+                      <div className="flex h-24 items-center justify-center text-xs text-[#484f58]">
+                        No post-mask candidates (all tokens suppressed or fallback used)
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <MaskedTokensPanel tokens={step.masked_tokens} />
+
+                {step.num_masked > 0 && (
+                  <div className="flex items-start gap-2 rounded-md border border-[#f85149]/20 bg-red-900/10 px-3 py-2 text-xs text-[#f85149]">
+                    <span className="mt-0.5 text-sm">✗</span>
+                    <span>
+                      <strong>{step.num_masked.toLocaleString()}</strong> of{" "}
+                      <strong>{step.vocab_size.toLocaleString()}</strong> tokens (
+                      <strong>{step.masked_percentage.toFixed(1)}%</strong>) suppressed by
+                      Verilog-grammar constraint, removing{" "}
+                      <strong>{formatPct(step.probability_mass_removed, 1)}</strong> of raw
+                      probability mass. The constrained distribution is renormalised over the
+                      remaining{" "}
+                      <strong>{step.valid_token_count.toLocaleString()}</strong> valid tokens.
                     </span>
                   </div>
-                  {hasAfterData ? (
-                    <>
-                      <TokenProbabilityChart
-                        candidates={validAsTopTokens}
-                        selectedTokenId={selectedId}
-                      />
-                      <ProbTable
-                        rows={validAsTopTokens.map((t) => ({
-                          token_id: t.token_id,
-                          token: t.token,
-                          probability: t.probability,
-                        }))}
-                        selectedId={selectedId}
-                      />
-                    </>
-                  ) : (
-                    <div className="flex h-24 items-center justify-center text-xs text-[#484f58]">
-                      No post-mask candidates (all tokens suppressed or fallback used)
-                    </div>
-                  )}
-                </div>
-              </div>
+                )}
+              </section>
 
-              {/* MASKED TOKENS section */}
-              <MaskedTokensPanel tokens={step.masked_tokens} />
+              {/* ── Layer 2: SynCode incremental parser ─────────────────── */}
+              <section className="flex flex-col gap-1.5">
+                <SyncodeParserEvidencePanel
+                  evidence={step.syncode_parser_evidence}
+                  provenanceKind={
+                    isStructurallyAvailable(step.syncode_parser_evidence)
+                      ? "recorded"
+                      : undefined
+                  }
+                  context="live"
+                  heading="SynCode incremental parser"
+                  legacyAcceptSequences={
+                    isStructurallyAvailable(step.syncode_parser_evidence)
+                      ? undefined
+                      : step.accept_sequences ?? []
+                  }
+                />
+              </section>
 
-              {/* Summary callout */}
-              {step.num_masked > 0 && (
-                <div className="flex items-start gap-2 rounded-md border border-[#f85149]/20 bg-red-900/10 px-3 py-2 text-xs text-[#f85149]">
-                  <span className="mt-0.5 text-sm">✗</span>
-                  <span>
-                    <strong>{step.num_masked.toLocaleString()}</strong> of{" "}
-                    <strong>{step.vocab_size.toLocaleString()}</strong> tokens (
-                    <strong>{step.masked_percentage.toFixed(1)}%</strong>) suppressed by Verilog-grammar
-                    constraint, removing{" "}
-                    <strong>{formatPct(step.probability_mass_removed, 1)}</strong> of raw probability
-                    mass. The constrained distribution is renormalised over the remaining{" "}
-                    <strong>{step.valid_token_count.toLocaleString()}</strong> valid tokens.
-                  </span>
-                </div>
-              )}
-
-              {/* Accepted grammar terminals */}
-              <AcceptSequencesPanel seqs={step.accept_sequences ?? []} />
-
-              {/* Incremental Lark parser state for this step prefix */}
-              <IncrementalParserStatePanel step={step} />
+              {/* ── Layer 1: Lark incremental parser ────────────────────── */}
+              <section className="flex flex-col gap-1.5">
+                <IncrementalParserStatePanel step={step} />
+              </section>
             </>
           ) : (
             /* Syncode mode but no step-level data (fallback / syncode unavailable) */
@@ -592,7 +613,38 @@ export function StepViewer({ step, mode }: Props) {
                 }))}
                 selectedId={selectedId}
               />
-              <AcceptSequencesPanel seqs={step.accept_sequences ?? []} />
+              <section className="flex flex-col gap-1.5">
+                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]">
+                  Tokenizer mask
+                </h3>
+                <p className="text-[11px] text-[#484f58]">
+                  Tokenizer-mask evidence unavailable for this step.
+                </p>
+              </section>
+              {isStructurallyAvailable(step.syncode_parser_evidence) ||
+              (step.accept_sequences?.length ?? 0) > 0 ? (
+                <SyncodeParserEvidencePanel
+                  evidence={step.syncode_parser_evidence}
+                  provenanceKind={
+                    isStructurallyAvailable(step.syncode_parser_evidence)
+                      ? "recorded"
+                      : undefined
+                  }
+                  context="live"
+                  heading="SynCode incremental parser"
+                  legacyAcceptSequences={
+                    isStructurallyAvailable(step.syncode_parser_evidence)
+                      ? undefined
+                      : step.accept_sequences ?? []
+                  }
+                />
+              ) : (
+                <SyncodeParserEvidencePanel
+                  evidence={step.syncode_parser_evidence}
+                  context="live"
+                  heading="SynCode incremental parser"
+                />
+              )}
               <IncrementalParserStatePanel step={step} />
             </>
           )}
@@ -620,6 +672,25 @@ export function StepViewer({ step, mode }: Props) {
             }))}
             selectedId={selectedId}
           />
+
+          {(isStructurallyAvailable(step.syncode_parser_evidence) ||
+            (step.accept_sequences?.length ?? 0) > 0) && (
+            <SyncodeParserEvidencePanel
+              evidence={step.syncode_parser_evidence}
+              provenanceKind={
+                isStructurallyAvailable(step.syncode_parser_evidence)
+                  ? "recorded"
+                  : undefined
+              }
+              context="live"
+              heading="SynCode incremental parser"
+              legacyAcceptSequences={
+                isStructurallyAvailable(step.syncode_parser_evidence)
+                  ? undefined
+                  : step.accept_sequences ?? []
+              }
+            />
+          )}
 
           <IncrementalParserStatePanel step={step} />
         </>

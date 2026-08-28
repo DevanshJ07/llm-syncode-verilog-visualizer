@@ -4,6 +4,7 @@
  */
 
 import type { ParserAnalysis } from "@/types/parserAnalysis";
+import type { SyncodeParserEvidence } from "@/types/syncodeParserEvidence";
 
 // ---------------------------------------------------------------------------
 // Parser failure context
@@ -103,8 +104,16 @@ export interface DecodingStep {
   probability_mass_removed: number;
 
   // --- Grammar forensics ---
-  /** Lark terminal names / grammar symbols valid at this parse state. */
+  /**
+   * Legacy stringified SynCode AcceptSequence reprs (not Lark terminals,
+   * not tokenizer vocabulary tokens). Prefer syncode_parser_evidence.
+   */
   accept_sequences: string[];
+  /**
+   * Authoritative structured SynCode ParseResult evidence (Phase 4A.1).
+   * Optional on older saved experiments that predate structured capture.
+   */
+  syncode_parser_evidence?: SyncodeParserEvidence;
   /** True when grammar masking was applied and changed at least one logit. */
   constraint_applied: boolean;
 

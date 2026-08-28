@@ -3,8 +3,10 @@
  */
 
 import { formatIncrementalParserBlock } from "@/lib/incrementalParserTraceReport";
+import { formatSyncodeParserEvidenceReport } from "@/lib/syncodeParserEvidenceDisplay";
 import { formatPct } from "@/lib/utils";
 import type { DecodingStep, ExperimentResult } from "@/types/decoding";
+import { isStructurallyAvailable } from "@/types/syncodeParserEvidence";
 
 /** JSON-style quoted token string for readable reports (whitespace visible). */
 export function formatTokenForReport(token: string): string {
@@ -138,8 +140,35 @@ export function formatStepAnalysisBlock(
   ];
 
   if (step.incremental_parser_state?.available) {
+    lines.push("Lark incremental parser");
+    lines.push("-----------------------");
+    lines.push(
+      "Lark terminals describe grammar-parser expectations; not SynCode sequences."
+    );
     lines.push(formatIncrementalParserBlock(step));
+    lines.push("");
   }
+
+  lines.push(
+    formatSyncodeParserEvidenceReport(step.syncode_parser_evidence, {
+      provenanceKind: isStructurallyAvailable(step.syncode_parser_evidence)
+        ? "recorded"
+        : "unavailable",
+      heading: "SynCode incremental parser",
+      legacyAcceptSequences: isStructurallyAvailable(step.syncode_parser_evidence)
+        ? undefined
+        : step.accept_sequences ?? [],
+    })
+  );
+  lines.push("");
+  lines.push("Tokenizer mask");
+  lines.push("--------------");
+  lines.push(
+    "Tokenizer-mask evidence describes actual vocabulary tokens/logits allowed or blocked."
+  );
+  lines.push(
+    `Valid tokens: ${validCount.toLocaleString()} | Masked tokens: ${maskedCount.toLocaleString()}`
+  );
 
   return lines.join("\n");
 }

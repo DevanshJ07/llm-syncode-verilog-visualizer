@@ -28,10 +28,10 @@ export function IncrementalParserStatePanel({ step }: Props) {
     return (
       <div className="rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2">
         <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]">
-          Incremental Parser State
+          Lark incremental parser
         </h3>
         <p className="text-[11px] text-[#484f58]">
-          Incremental parser snapshot unavailable — re-run generation to populate.
+          Lark incremental parser snapshot unavailable — re-run generation to populate.
         </p>
       </div>
     );
@@ -41,12 +41,17 @@ export function IncrementalParserStatePanel({ step }: Props) {
     <div className="flex flex-col gap-2 rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]">
-          Incremental Parser State
+          Lark incremental parser
         </h3>
         <span className="font-mono text-[10px] text-[#484f58]">
           step {step.step} · grammar=verilog · lalr
         </span>
       </div>
+
+      <p className="text-[11px] text-[#8b949e]">
+        Lark terminals describe grammar-parser expectations for this prefix.
+        They are not SynCode accept sequences and not tokenizer vocabulary tokens.
+      </p>
 
       <p className="text-[11px] text-[#8b949e]">
         STEP {step.step} — selected token{" "}
@@ -99,7 +104,7 @@ export function IncrementalParserStatePanel({ step }: Props) {
       {(ips.expected_next_terminals?.length ?? 0) > 0 && (
         <div>
           <p className="mb-1 text-[10px] uppercase tracking-wider text-[#484f58]">
-            Expected next terminals
+            Expected next terminals (Lark)
           </p>
           <div className="flex flex-wrap gap-1">
             {ips.expected_next_terminals.map((t) => (
@@ -117,7 +122,7 @@ export function IncrementalParserStatePanel({ step }: Props) {
       {(ips.accepted_next_terminals?.length ?? 0) > 0 && (
         <div>
           <p className="mb-1 text-[10px] uppercase tracking-wider text-[#484f58]">
-            Accepted next terminals
+            Accepted next terminals (Lark)
           </p>
           <div className="flex flex-wrap gap-1">
             {ips.accepted_next_terminals.map((t) => (

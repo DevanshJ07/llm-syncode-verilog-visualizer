@@ -13,6 +13,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ProvenanceValue } from "@/components/ui/ProvenanceValue";
 import { StepPlayer } from "@/components/visualization/StepPlayer";
+import {
+  ImportedSyncodeParserEvidenceSection,
+} from "@/components/visualization/SyncodeParserEvidencePanel";
 import { cn } from "@/lib/utils";
 import {
   derivePrefixFromSelected,
@@ -468,11 +471,19 @@ export function ImportedTraceViewer({ prompt }: Props) {
             </p>
           </section>
 
-          {/* Mask statistics */}
+          {/* Mask statistics — tokenizer mask layer */}
           <section className="rounded-md border border-surface-border bg-surface-raised p-4">
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
-              Mask statistics
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+              Tokenizer mask
             </h3>
+            <p className="mb-3 text-[10px] text-[#484f58]">
+              Tokenizer-mask evidence describes actual vocabulary tokens / logits
+              allowed or blocked. Not SynCode accept sequences and not Lark
+              expected terminals.
+            </p>
+            <h4 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-[#484f58]">
+              Mask statistics
+            </h4>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
@@ -665,13 +676,11 @@ export function ImportedTraceViewer({ prompt }: Props) {
           {/* Parser / masking state */}
           <section className="rounded-md border border-surface-border bg-surface-raised p-4">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
-              Parser / masking state
+              Parser flags
             </h3>
             {isUnavailable(step.parser_info) || !step.parser_info.value ? (
               <p className="text-sm text-[#484f58]">
                 Parser details were not recorded for this step (Unavailable).
-                No parser tree, expected terminals, accept sequences, remainder
-                state, or EOS eligibility are inferred.
               </p>
             ) : (
               <div className="flex flex-col gap-2 text-sm">
@@ -683,13 +692,56 @@ export function ImportedTraceViewer({ prompt }: Props) {
                       ? "False — Recorded"
                       : "Unavailable"}
                 </p>
-                <p className="text-xs text-[#484f58]">
-                  No parser tree is generated here. Expected terminals, SynCode
-                  accept sequences, remainder state, and EOS eligibility remain
-                  unavailable unless recorded (they are not inferred).
-                </p>
               </div>
             )}
+          </section>
+
+          {/* Layer 1: Lark expected terminals */}
+          <section className="rounded-md border border-surface-border bg-surface-raised p-4">
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+              Lark incremental parser
+            </h3>
+            <p className="mb-3 text-[10px] text-[#484f58]">
+              Lark terminals describe grammar-parser expectations. They are not
+              SynCode accept sequences and not tokenizer vocabulary tokens.
+            </p>
+            {isUnavailable(step.expected_terminals) ||
+            step.expected_terminals.value === null ? (
+              <p className="text-sm text-[#484f58]">
+                Expected Lark terminals unavailable for this step.
+              </p>
+            ) : step.expected_terminals.value.length === 0 ? (
+              <p className="text-sm text-[#484f58]">
+                Recorded empty Lark expected-terminal list.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {step.expected_terminals.value.map((t, i) => (
+                  <span
+                    key={`${t}-${i}`}
+                    className="rounded border border-[#30363d] bg-[#161b22] px-1.5 py-0.5 font-mono text-[11px] text-[#58a6ff]"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[10px] text-[#484f58]">
+              Provenance:{" "}
+              {provenanceLabel(
+                isUnavailable(step.expected_terminals)
+                  ? "unavailable"
+                  : step.expected_terminals.provenance.kind
+              )}
+            </p>
+          </section>
+
+          {/* Layer 2: SynCode structured evidence */}
+          <section className="rounded-md border border-surface-border bg-surface-raised p-4">
+            <ImportedSyncodeParserEvidenceSection
+              primary={step.syncode_parser_evidence}
+              recordedSibling={step.syncode_parser_evidence_recorded}
+            />
           </section>
 
           {/* Availability panel */}

@@ -5,6 +5,7 @@
 
 import type { Prov } from "@/types/provenance";
 import type { ParserAnalysis } from "@/types/parserAnalysis";
+import type { SyncodeParserEvidence } from "@/types/syncodeParserEvidence";
 
 export type ExperimentSourceType = "live_local" | "imported";
 
@@ -43,6 +44,16 @@ export interface NormalizedTraceStep {
   syncode_accept_sequences: Prov<unknown[]>;
   remainder_state: Prov<string>;
   eos_eligible: Prov<boolean>;
+  /**
+   * Phase 4A.2 primary SynCode parser evidence (recomputed when requested,
+   * otherwise bundle-recorded if present).
+   */
+  syncode_parser_evidence?: Prov<SyncodeParserEvidence>;
+  /**
+   * Preserved bundle-recorded sibling when recomputation also ran.
+   * Never silently overwritten by recomputed evidence.
+   */
+  syncode_parser_evidence_recorded?: Prov<SyncodeParserEvidence>;
   step_warnings: string[];
 }
 
