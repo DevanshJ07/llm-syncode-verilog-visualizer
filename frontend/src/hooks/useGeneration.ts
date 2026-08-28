@@ -79,6 +79,7 @@ export function useGeneration(): UseGenerationReturn {
         parse_tree_expected_terminals: response.parse_tree_expected_terminals ?? [],
         parse_tree_previous_token: response.parse_tree_previous_token ?? "",
         parser_failure_context: response.parser_failure_context,
+        parser_analysis: response.parser_analysis,
       };
 
       // Final client-side guard — never show visualization with a truly empty trace,

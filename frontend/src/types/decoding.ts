@@ -3,6 +3,8 @@
  * Keep these in sync whenever the backend schemas change.
  */
 
+import type { ParserAnalysis } from "@/types/parserAnalysis";
+
 // ---------------------------------------------------------------------------
 // Parser failure context
 // ---------------------------------------------------------------------------
@@ -212,6 +214,11 @@ export interface ExperimentResult {
   parse_tree_previous_token?: string;
   /** Rich failure diagnostics — populated when parse_tree_available is false. */
   parser_failure_context?: ParserFailureContext;
+  /**
+   * Phase 3A/3B structured complete / partial / recovered parser analysis.
+   * Prefer this over legacy parse_tree_* when present and not unavailable.
+   */
+  parser_analysis?: ParserAnalysis;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +288,8 @@ export interface GenerateResponse {
   parse_tree_expected_terminals?: string[];
   parse_tree_previous_token?: string;
   parser_failure_context?: ParserFailureContext;
+  /** Phase 3A structured parser analysis (complete / partial / recovered). */
+  parser_analysis?: ParserAnalysis;
   // full decoding trace — one entry per generated token
   steps: DecodingStep[];
 }

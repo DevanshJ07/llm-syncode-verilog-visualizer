@@ -4,6 +4,7 @@
  */
 
 import type { Prov } from "@/types/provenance";
+import type { ParserAnalysis } from "@/types/parserAnalysis";
 
 export type ExperimentSourceType = "live_local" | "imported";
 
@@ -62,6 +63,12 @@ export interface NormalizedPromptResult {
   mask_counts: Prov<Record<string, unknown>>;
   recomputed_grammar_verdict: Prov<string>;
   recomputed_parse_error: Prov<string>;
+  /**
+   * Phase 3A structured parser analysis. Unavailable unless
+   * recompute_with_current_grammar was true at import. Optional for
+   * pre-3A persisted JSON that still loads via defaults on the backend.
+   */
+  parser_analysis?: Prov<ParserAnalysis>;
   steps: NormalizedTraceStep[];
   source_files: SourceFileRef[];
   warnings: string[];

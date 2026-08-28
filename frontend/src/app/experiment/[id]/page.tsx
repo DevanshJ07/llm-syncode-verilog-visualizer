@@ -21,6 +21,7 @@ import Link from "next/link";
 
 import { CodeViewer } from "@/components/output/CodeViewer";
 import { DecodingTimeline } from "@/components/visualization/DecodingTimeline";
+import { ParserTreeExportPanel } from "@/components/visualization/ParserTreeExportPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -189,6 +190,8 @@ export default function ExperimentPage() {
           </div>
         </section>
       </div>
+
+      <ParserTreeExportPanel experiment={experiment} />
     </div>
   );
 }

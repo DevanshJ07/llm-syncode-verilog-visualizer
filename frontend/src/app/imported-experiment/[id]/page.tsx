@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ProvenanceValue } from "@/components/ui/ProvenanceValue";
 import { Spinner } from "@/components/ui/Spinner";
+import { ParserAnalysisViewer } from "@/components/visualization/ParserAnalysisViewer";
 import { getImportedExperiment } from "@/lib/api";
 import { metaDictGet } from "@/lib/provenanceDisplay";
 import { formatDate } from "@/lib/utils";
@@ -319,6 +320,19 @@ export default function ImportedExperimentPage() {
                 className="min-h-40 max-h-[50vh]"
               />
             )}
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <ParserAnalysisViewer
+              key={prompt.problem_id}
+              analysis={
+                isUnavailable(prompt.parser_analysis)
+                  ? null
+                  : prompt.parser_analysis?.value ?? null
+              }
+              context="imported"
+              title="Structured parser analysis"
+            />
           </section>
 
           <section className="flex flex-col gap-2">
