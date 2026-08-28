@@ -178,7 +178,7 @@ def test_successful_qwen_shaped_import():
     exp = normalize_imported_bundle(raw)
     assert exp.source_type == "imported"
     assert exp.experiment_name == "focused_four_qwen_512"
-    assert exp.schema_version == "2A.2"
+    assert exp.schema_version == "4A.2"
     assert len(exp.prompt_results) == 1
     pr = exp.prompt_results[0]
     assert pr.problem_id == "Prob004_vector2"

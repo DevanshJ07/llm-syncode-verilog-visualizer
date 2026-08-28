@@ -102,7 +102,7 @@ def test_normalized_experiment_and_prompt_defaults():
             NormalizedPromptResult(problem_id="Prob004_vector2"),
         ],
     )
-    assert exp.schema_version == NORMALIZED_SCHEMA_VERSION  # currently 2A.2
+    assert exp.schema_version == NORMALIZED_SCHEMA_VERSION  # 4A.2
     assert exp.source_type == "imported"
     pr = exp.prompt_results[0]
     assert pr.grammar_verdict.is_unavailable

@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     syncode_parser_evidence_max_terminal_chars: int = 64
     syncode_parser_evidence_max_remainder_bytes: int = 512
 
+    # Phase 4A.2 — imported parser-only SynCode evidence recomputation limits.
+    syncode_parser_evidence_recompute_max_steps: int = 2048
+    syncode_parser_evidence_recompute_max_prefix_chars: int = 200_000
+
 
 # Singleton — import `settings` everywhere, never instantiate Settings directly.
 settings = Settings()

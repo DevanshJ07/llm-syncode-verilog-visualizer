@@ -275,6 +275,32 @@ def _normalize_step(raw: dict[str, Any], *, source_file: str) -> NormalizedTrace
     else:
         logits = Prov[Any].unavailable(method="vocab_logits absent")
 
+    # Future bundles may carry structured SynCode parser evidence.
+    # Do not invent structured terminals from legacy string accept_sequences.
+    from app.models.syncode_parser_evidence import (  # noqa: PLC0415
+        SyncodeParserEvidence,
+    )
+    from app.services.syncode_parser_evidence import (  # noqa: PLC0415
+        validate_imported_structured_evidence,
+    )
+
+    recorded_ev = None
+    if "syncode_parser_evidence" in raw:
+        recorded_ev = validate_imported_structured_evidence(
+            raw.get("syncode_parser_evidence")
+        )
+    if recorded_ev is not None:
+        syncode_ev: Prov[SyncodeParserEvidence] = Prov[SyncodeParserEvidence].recorded(
+            recorded_ev,
+            source_file=source_file,
+            source_field="syncode_parser_evidence",
+            method="structured SynCode parser evidence from imported trace",
+        )
+    else:
+        syncode_ev = Prov[SyncodeParserEvidence].unavailable(
+            method="SynCode parser evidence absent from imported trace"
+        )
+
     return NormalizedTraceStep(
         step_index=idx,
         prefix_before_selected=prefix,
@@ -292,6 +318,7 @@ def _normalize_step(raw: dict[str, Any], *, source_file: str) -> NormalizedTrace
         recorded_top_raw_tokens=top_raw,
         recorded_vocab_logits=logits,
         parser_info=parser_info,
+        syncode_parser_evidence=syncode_ev,
     )
 
 
@@ -549,6 +576,7 @@ def normalize_imported_bundle(
     zip_bytes: bytes,
     *,
     recompute_with_current_grammar: bool = False,
+    recompute_syncode_parser_evidence: bool = False,
     experiment_id: str | None = None,
     inspection: ZipInspectionResult | None = None,
 ) -> NormalizedExperiment:
@@ -556,6 +584,9 @@ def normalize_imported_bundle(
     Inspect (if needed) and normalize a ZIP experiment bundle.
 
     Requires exactly one recognized ``results/<experiment>/`` root.
+
+    ``recompute_with_current_grammar`` and ``recompute_syncode_parser_evidence``
+    are independent.  The latter is parser-only SynCode evidence (no MaskStore).
     """
     if not isinstance(zip_bytes, (bytes, bytearray)):
         raise ImportNormalizationError("ZIP payload must be bytes")
@@ -657,7 +688,7 @@ def normalize_imported_bundle(
                     break
 
         canonical_hash: Optional[str] = None
-        if recompute_with_current_grammar:
+        if recompute_with_current_grammar or recompute_syncode_parser_evidence:
             canonical_hash = grammar_sha256()
 
         for problem_id in sorted(grouped.keys()):
@@ -1013,6 +1044,65 @@ def normalize_imported_bundle(
                         "recomputed canonical-grammar verdict / parser analysis"
                     )
 
+            # Phase 4A.2 — optional SynCode parser-only evidence recompute.
+            # Independent of recompute_with_current_grammar.  Lazy-imported so
+            # the default-false path never initializes SynCode.
+            if recompute_syncode_parser_evidence and steps:
+                from app.models.syncode_parser_evidence import (  # noqa: PLC0415
+                    SyncodeParserEvidence as _SPE,
+                )
+                from app.models.provenance import Prov as _Prov  # noqa: PLC0415
+                from app.services.syncode_parser_evidence_recompute import (  # noqa: PLC0415
+                    recompute_syncode_parser_evidence_for_steps,
+                )
+
+                trace_src = ""
+                if traces:
+                    trace_src = traces[0].normalized_path
+                recomputed_list, rc_warns = recompute_syncode_parser_evidence_for_steps(
+                    steps,
+                    grammar_hash=canonical_hash,
+                    source_file=trace_src,
+                )
+                for w in rc_warns:
+                    add_warn(w)
+
+                updated_steps: list[NormalizedTraceStep] = []
+                for step, recomputed_prov in zip(steps, recomputed_list):
+                    recorded_sibling = _Prov[_SPE].unavailable(
+                        method="no separate recorded SynCode parser evidence"
+                    )
+                    if (
+                        not step.syncode_parser_evidence.is_unavailable
+                        and step.syncode_parser_evidence.value is not None
+                    ):
+                        recorded_sibling = step.syncode_parser_evidence
+
+                    updates: dict[str, Any] = {
+                        "syncode_parser_evidence": recomputed_prov,
+                        "syncode_parser_evidence_recorded": recorded_sibling,
+                    }
+                    ev = recomputed_prov.value
+                    if ev is not None and ev.is_structurally_available():
+                        updates["syncode_accept_sequences"] = _Prov[list[Any]].recomputed(
+                            [list(r.terminals) for r in ev.accept_sequences],
+                            method=(
+                                "structured SynCode accept sequences from "
+                                "parser-only recompute"
+                            ),
+                            grammar_sha256=canonical_hash,
+                            source_file=trace_src or None,
+                        )
+                        if ev.remainder_state is not None:
+                            updates["remainder_state"] = _Prov[str].recomputed(
+                                ev.remainder_state,
+                                method="SynCode remainder_state from parser-only recompute",
+                                grammar_sha256=canonical_hash,
+                                source_file=trace_src or None,
+                            )
+                    updated_steps.append(step.model_copy(update=updates))
+                steps = updated_steps
+
             prompt_results.append(
                 NormalizedPromptResult(
                     problem_id=problem_id,
@@ -1048,6 +1138,7 @@ def normalize_imported_bundle(
             "enclosing_directory": inspection.enclosing_directory,
             "sibling_log_path": exp_info.sibling_log_path,
             "recompute_with_current_grammar": recompute_with_current_grammar,
+            "recompute_syncode_parser_evidence": recompute_syncode_parser_evidence,
         }
         if not meta["runtime"].is_unavailable and meta["runtime"].value:
             runtime_val = {**meta["runtime"].value, **runtime_extra}

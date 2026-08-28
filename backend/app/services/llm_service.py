@@ -500,6 +500,7 @@ class _SyncodeConstraint:
                         accept_mask=mask,
                         syncode_tokenizer_eos_token_id=_syn_eos_id,
                         application_eos_token_ids=_app_eos_ids,
+                        origin="live_mask_runtime",
                     )
                     _structured_evidence.append(evidence)
                 except Exception as _cap_exc:
@@ -610,7 +611,7 @@ class _SyncodeConstraint:
                     mask_call_index=step,
                 )
 
-            if structured_ev.status == "recorded":
+            if structured_ev.is_structurally_available():
                 legacy_accept_seqs = format_legacy_accept_sequences(
                     structured_ev, max_entries=6
                 )
@@ -2318,7 +2319,7 @@ class LLMService:
                             }
                         )
                     step_obj.syncode_parser_evidence = ev
-                    if ev.status == "recorded":
+                    if ev.is_structurally_available():
                         step_obj.accept_sequences = format_legacy_accept_sequences(ev)
                     else:
                         # Preserve any debug strings; do not invent sequences.

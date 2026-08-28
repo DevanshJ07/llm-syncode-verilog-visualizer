@@ -13,8 +13,9 @@ from pydantic import BaseModel, Field
 
 from app.models.provenance import Prov
 from app.models.parser_analysis import ParserAnalysis
+from app.models.syncode_parser_evidence import SyncodeParserEvidence
 
-NORMALIZED_SCHEMA_VERSION = "2A.2"
+NORMALIZED_SCHEMA_VERSION = "4A.2"
 
 ExperimentSourceType = Literal["live_local", "imported"]
 
@@ -125,6 +126,21 @@ class NormalizedTraceStep(BaseModel):
     eos_eligible: Prov[bool] = Field(
         default_factory=lambda: Prov[bool].unavailable(
             method="EOS eligibility absent"
+        )
+    )
+    # Phase 4A.2 — structured SynCode parser evidence (primary display field).
+    # Holds recomputed evidence when requested, otherwise bundle-recorded if
+    # present, otherwise unavailable.  Never silently mixes Lark terminals.
+    syncode_parser_evidence: Prov[SyncodeParserEvidence] = Field(
+        default_factory=lambda: Prov[SyncodeParserEvidence].unavailable(
+            method="SynCode parser evidence absent"
+        )
+    )
+    # Preserved bundle-recorded structured evidence when recomputation also ran
+    # (honest coexistence — never overwrite recorded with recomputed).
+    syncode_parser_evidence_recorded: Prov[SyncodeParserEvidence] = Field(
+        default_factory=lambda: Prov[SyncodeParserEvidence].unavailable(
+            method="no separate recorded SynCode parser evidence"
         )
     )
 

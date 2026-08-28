@@ -80,11 +80,14 @@ async def _read_upload_limited(upload: UploadFile, *, max_bytes: int) -> bytes:
 async def import_bundle(
     file: UploadFile = File(..., description="Experiment result ZIP"),
     recompute_with_current_grammar: bool = Form(False),
+    recompute_syncode_parser_evidence: bool = Form(False),
 ) -> NormalizedExperiment:
     """
     Inspect, normalize, and persist an uploaded experiment ZIP.
 
-    ``recompute_with_current_grammar`` defaults to false.
+    ``recompute_with_current_grammar`` defaults to false (Lark / parser analysis).
+    ``recompute_syncode_parser_evidence`` defaults to false (parser-only SynCode;
+    independent of the grammar flag; never builds a MaskStore).
     """
     max_bytes = settings.max_import_upload_bytes
     content_type = (file.content_type or "").lower()
@@ -123,6 +126,9 @@ async def import_bundle(
         experiment = normalize_imported_bundle(
             zip_bytes,
             recompute_with_current_grammar=bool(recompute_with_current_grammar),
+            recompute_syncode_parser_evidence=bool(
+                recompute_syncode_parser_evidence
+            ),
             experiment_id=experiment_id,
         )
     except ZipInspectionError as exc:

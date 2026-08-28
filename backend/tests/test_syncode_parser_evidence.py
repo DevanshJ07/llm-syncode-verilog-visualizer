@@ -112,7 +112,7 @@ def test_01_single_terminal_sequence():
         FakeRemainderState.COMPLETE,
     )
     ev = _ev(pr)
-    assert ev.status == "recorded"
+    assert ev.status == "available"
     assert ev.accept_sequence_count_total == 1
     assert ev.accept_sequences[0].terminals == ["MODULE"]
 
@@ -173,7 +173,7 @@ def test_05_recorded_empty_set_differs_from_unavailable():
     )
     missing = unavailable_syncode_parser_evidence(reason="not recorded")
     none_res = serialize_parse_result(None, syncode_version="0.4.16-test")
-    assert empty.status == "recorded"
+    assert empty.status == "available"
     assert empty.accept_sequence_count_total == 0
     assert empty.accept_sequences == []
     assert missing.status == "unavailable"
@@ -324,7 +324,7 @@ def test_14_and_15_mask_returned_unchanged_and_called_once():
     assert len(calls) == 1
     assert calls[0] is pr
     assert len(captured) == 1
-    assert captured[0].status == "recorded"
+    assert captured[0].status == "available"
 
 
 def test_16_capture_serialization_failure_does_not_alter_mask():
@@ -592,7 +592,7 @@ def test_interface_real_syncode_accept_sequence_and_remainder_shapes():
         function_end=True,
     )
     ev = serialize_parse_result(pr, syncode_version="0.4.16", mask_call_index=0)
-    assert ev.status == "recorded"
+    assert ev.status == "available"
     assert ev.grammar_end_marker_present is True
     assert ev.remainder_state == "COMPLETE"
     assert [r.terminals for r in ev.accept_sequences] == [["$END"], ["WS"]]

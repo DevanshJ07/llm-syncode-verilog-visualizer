@@ -238,6 +238,43 @@ def test_recompute_form_true(client):
     assert pr["recomputed_grammar_verdict"]["provenance"]["grammar_sha256"]
 
 
+def test_syncode_recompute_form_default_false(client):
+    http, _ = client
+    r = http.post(
+        "/import/bundle",
+        files={"file": ("bundle.zip", _minimal_zip(), "application/zip")},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["runtime_metadata"]["value"]["recompute_syncode_parser_evidence"] is False
+    step0 = body["prompt_results"][0]["steps"][0]
+    assert step0["syncode_parser_evidence"]["provenance"]["kind"] == "unavailable"
+
+
+def test_syncode_recompute_form_true_independent(client):
+    http, _ = client
+    r = http.post(
+        "/import/bundle",
+        files={"file": ("bundle.zip", _minimal_zip(), "application/zip")},
+        data={
+            "recompute_with_current_grammar": "false",
+            "recompute_syncode_parser_evidence": "true",
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["runtime_metadata"]["value"]["recompute_syncode_parser_evidence"] is True
+    pr = body["prompt_results"][0]
+    assert pr["recomputed_grammar_verdict"]["provenance"]["kind"] == "unavailable"
+    step0 = pr["steps"][0]
+    assert step0["syncode_parser_evidence"]["provenance"]["kind"] == "recomputed"
+    assert (
+        step0["syncode_parser_evidence"]["value"]["origin"]
+        == "import_recomputed_parser_only"
+    )
+    assert step0["syncode_parser_evidence"]["value"]["mask_eos_observation"] is None
+
+
 def test_live_schema_and_generate_route_still_importable(client):
     """Existing live schemas/API remain wired (smoke, no model run)."""
     http, _ = client

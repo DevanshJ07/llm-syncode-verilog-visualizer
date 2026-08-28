@@ -317,20 +317,28 @@ def serialize_parse_result(
     syncode_tokenizer_eos_token_id: int | None = None,
     application_eos_token_ids: Sequence[int] | None = None,
     extra_warnings: Sequence[str] | None = None,
+    origin: str = "live_mask_runtime",
 ) -> SyncodeParserEvidence:
     """
-    Build SyncodeParserEvidence from a live ParseResult (or compatible fake).
+    Build SyncodeParserEvidence from a ParseResult (live or recomputed).
 
-    Callers must pass the ParseResult that was given to ``get_accept_mask``.
+    For live masking, pass the ParseResult given to ``get_accept_mask`` and
+    ``origin="live_mask_runtime"``.  For import recomputation, use
+    ``origin="import_recomputed_parser_only"`` and leave ``accept_mask`` /
+    ``mask_call_index`` unset.
     """
+    from app.models.syncode_parser_evidence import EvidenceOrigin  # noqa: PLC0415
+
     version = syncode_version if syncode_version is not None else syncode_package_version()
     warnings: list[str] = list(extra_warnings or [])
+    origin_val: EvidenceOrigin = origin  # type: ignore[assignment]
 
     if parse_result is None:
         return unavailable_syncode_parser_evidence(
             reason="ParseResult was None at get_accept_mask",
             warnings=warnings,
             mask_call_index=mask_call_index,
+            origin=origin_val,
         )
 
     try:
@@ -372,7 +380,8 @@ def serialize_parse_result(
             )
 
         return SyncodeParserEvidence(
-            status="recorded",
+            status="available",
+            origin=origin_val,
             evidence_timing="before_selected_token",
             syncode_version=version,
             mask_call_index=mask_call_index,
@@ -402,6 +411,7 @@ def serialize_parse_result(
             + ["capture serialization failure; mask path unaffected"],
             mask_call_index=mask_call_index,
             syncode_version=version,
+            origin=origin_val,
         )
 
 
@@ -416,7 +426,7 @@ def format_legacy_accept_sequences(
     Matches SynCode AcceptSequence ``__repr__`` style:
     ``accept_terminals: ('MODULE',)``
     """
-    if evidence.status != "recorded":
+    if not evidence.is_structurally_available():
         return []
     out: list[str] = []
     for rec in evidence.accept_sequences[:max_entries]:
@@ -456,6 +466,7 @@ def wrap_get_accept_mask(
                 accept_mask=mask,
                 syncode_tokenizer_eos_token_id=syncode_tokenizer_eos_token_id,
                 application_eos_token_ids=application_eos_token_ids,
+                origin="live_mask_runtime",
             )
             on_captured(evidence)
         except Exception as exc:
@@ -465,6 +476,7 @@ def wrap_get_accept_mask(
                         error=f"capture hook: {type(exc).__name__}: {exc}",
                         mask_call_index=mask_call_index,
                         syncode_version=syncode_version,
+                        origin="live_mask_runtime",
                     )
                 )
             except Exception:
@@ -472,3 +484,29 @@ def wrap_get_accept_mask(
         return mask
 
     return wrapped
+
+
+def validate_imported_structured_evidence(raw: Any) -> SyncodeParserEvidence | None:
+    """
+    Validate a future bundle's structured ``syncode_parser_evidence`` object.
+
+    Returns None when absent or invalid.  Does not parse legacy stringified
+    accept-sequence text into terminal lists.
+    """
+    if raw is None or not isinstance(raw, dict):
+        return None
+    try:
+        ev = SyncodeParserEvidence.model_validate(raw)
+    except Exception:
+        return None
+    if (
+        ev.status == "unavailable"
+        and ev.origin == "none"
+        and not ev.accept_sequences
+        and not ev.error
+        and not ev.warnings
+    ):
+        return None
+    if ev.origin == "none":
+        ev = ev.model_copy(update={"origin": "import_recorded_bundle"})
+    return ev
