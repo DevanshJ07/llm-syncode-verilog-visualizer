@@ -1,36 +1,22 @@
 "use client";
 
 /**
- * Home page — Generate & Visualize
+ * Home page — Generate & Visualize / Import
  *
- * Before generation: full-width prompt form.
- * After generation: visualization takes over the page.
- *
- * Layout (post-generation):
- * ┌─────────────────────────────────────────────────────┐
- * │ [Re-generate strip — collapsed PromptForm]          │
- * ├─────────────────────────────────────────────────────┤
- * │ SyncodeEvidencePanel  (grammar/constraint status)   │
- * ├──────────────────────┬──────────────────────────────┤
- * │  Generated code      │  Step Viewer                 │
- * │  (grows token by     │  (before/after masking +     │
- * │   token as slider    │   forensic data for step)    │
- * │   is scrubbed)       │                              │
- * ├──────────────────────┴──────────────────────────────┤
- * │  StepPlayer  (slider + transport + speed)           │
- * ├─────────────────────────────────────────────────────┤
- * │  TopMaskedTokensPanel  (top 50 masked by pre-mask p)│
- * ├─────────────────────────────────────────────────────┤
- * │  StepAnalysisExportPanel  (copy / download report)  │
- * ├─────────────────────────────────────────────────────┤
- * │  EntropyChart  (line chart across all steps)        │
- * ├─────────────────────────────────────────────────────┤
- * │  DecodingTimeline  (all steps, expandable cards)    │
- * └─────────────────────────────────────────────────────┘
+ * Source selector:
+ *   Live Local Generation  — existing Qwen → SynCode workflow
+ *   Imported Experiment    — ZIP import + list (Phase 2B.1)
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
+import {
+  ExperimentSourceSelector,
+  type ExperimentSourceMode,
+} from "@/components/import/ExperimentSourceSelector";
+import { ImportExperimentPanel } from "@/components/import/ImportExperimentPanel";
+import { ImportedExperimentList } from "@/components/import/ImportedExperimentList";
 import { PromptForm } from "@/components/prompt/PromptForm";
 import { CodeViewer } from "@/components/output/CodeViewer";
 import { StepViewer } from "@/components/visualization/StepViewer";
@@ -51,9 +37,35 @@ import { DEFAULT_MAX_NEW_TOKENS } from "@/lib/generationDefaults";
 import type { GenerateRequest } from "@/types/decoding";
 
 export default function HomePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex justify-center py-32">
+          <Spinner size="lg" label="Loading…" />
+        </div>
+      }
+    >
+      <HomePageInner />
+    </Suspense>
+  );
+}
+
+function HomePageInner() {
+  const searchParams = useSearchParams();
+  const initialSource: ExperimentSourceMode =
+    searchParams.get("source") === "imported" ? "imported" : "live";
+
+  const [source, setSource] = useState<ExperimentSourceMode>(initialSource);
+  const [importRefreshKey, setImportRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (searchParams.get("source") === "imported") {
+      setSource("imported");
+    }
+  }, [searchParams]);
+
   const { status, experiment, error, generate, reset } = useGeneration();
 
-  // Which step is the "camera" pointing at (0-indexed)
   const [currentStep, setCurrentStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playIntervalMs, setPlayIntervalMs] = useState(1000);
@@ -67,7 +79,6 @@ export default function HomePage() {
     experiment.steps.length > 0 &&
     experiment.total_steps > 0;
 
-  // Reset step index whenever a new experiment arrives
   useEffect(() => {
     if (hasResult) {
       setCurrentStep(0);
@@ -76,7 +87,6 @@ export default function HomePage() {
     }
   }, [hasResult, experiment?.experiment_id]);
 
-  // Stop autoplay at last step
   useEffect(() => {
     if (!experiment) return;
     if (currentStep >= experiment.total_steps - 1) {
@@ -93,7 +103,6 @@ export default function HomePage() {
     [generate, reset]
   );
 
-  // Derived: text visible up to (and including) the current step
   const visibleCode = useMemo(() => {
     if (!experiment || experiment.steps.length === 0) return "";
     const step = experiment.steps[currentStep];
@@ -101,7 +110,6 @@ export default function HomePage() {
     return step.context + step.selected_token;
   }, [experiment, currentStep]);
 
-  // Derived: aggregate stats for the stats strip
   const stats = useMemo(() => {
     if (!experiment || experiment.steps.length === 0) return null;
     const entropies = experiment.steps
@@ -122,7 +130,46 @@ export default function HomePage() {
     };
   }, [experiment]);
 
-  // ── ERROR: show form with backend error (no stale visualization) ───────
+  const sourceSelector = (
+    <ExperimentSourceSelector
+      value={source}
+      onChange={(mode) => {
+        setSource(mode);
+        if (mode === "live") {
+          // Keep live state; switching away from import does not reset generation.
+        } else {
+          setIsPlaying(false);
+        }
+      }}
+      disabled={isLoading}
+    />
+  );
+
+  // ── IMPORTED MODE ───────────────────────────────────────────────────────
+  if (source === "imported") {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col gap-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[#e6edf3]">Import &amp; Browse</h1>
+          <p className="mt-1 text-sm leading-relaxed text-[#8b949e]">
+            Import a SynViz experiment result ZIP into the normalized store, then
+            open stored experiments. Full token-step masking visualization for
+            imports arrives in Phase 2B.2.
+          </p>
+        </div>
+        {sourceSelector}
+        <Card>
+          <ImportExperimentPanel
+            onImported={() => setImportRefreshKey((k) => k + 1)}
+          />
+        </Card>
+        <ImportedExperimentList refreshKey={importRefreshKey} />
+      </div>
+    );
+  }
+
+  // ── LIVE MODE (existing behaviour) ──────────────────────────────────────
+
   if (hasError && !isLoading) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -132,6 +179,7 @@ export default function HomePage() {
             Generation failed. The error below is from the backend — no placeholder output is shown.
           </p>
         </div>
+        {sourceSelector}
         <Card>
           <PromptForm onSubmit={handleGenerate} isLoading={isLoading} error={error} />
         </Card>
@@ -139,7 +187,6 @@ export default function HomePage() {
     );
   }
 
-  // ── PRE-GENERATION: full-width prompt form ──────────────────────────────
   if (!hasResult && !isLoading) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -151,6 +198,7 @@ export default function HomePage() {
             entropy shifts, and masked-token forensics at every step.
           </p>
         </div>
+        {sourceSelector}
         <Card>
           <PromptForm onSubmit={handleGenerate} isLoading={isLoading} error={error} />
         </Card>
@@ -171,7 +219,6 @@ export default function HomePage() {
     );
   }
 
-  // ── LOADING ─────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="flex flex-col items-center gap-6 py-32">
@@ -189,15 +236,16 @@ export default function HomePage() {
     );
   }
 
-  // ── POST-GENERATION: full visualization ─────────────────────────────────
   if (!experiment) return null;
 
   const activeStep = experiment.steps[currentStep];
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="rounded-md border border-surface-border bg-surface-raised px-4 py-3">
+        {sourceSelector}
+      </div>
 
-      {/* ── Compact re-generate strip ─────────────────────────────────── */}
       <div className="flex items-center gap-3 rounded-md border border-surface-border bg-surface-raised px-4 py-2">
         <span className="text-xs text-[#484f58]">
           <span className="text-accent-blue font-mono">
@@ -224,17 +272,14 @@ export default function HomePage() {
         </Button>
       </div>
 
-      {/* ── Collapsible prompt form ───────────────────────────────────── */}
       {showForm && (
         <Card>
           <PromptForm onSubmit={handleGenerate} isLoading={isLoading} error={error} />
         </Card>
       )}
 
-      {/* ── SynCode Evidence Panel ────────────────────────────────────── */}
       <SyncodeEvidencePanel experiment={experiment} />
 
-      {/* ── Stats strip ───────────────────────────────────────────────── */}
       {stats && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
@@ -255,10 +300,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Main split: code (narrow) + step detail / forensic (wide) ─ */}
       <div className="grid gap-3 lg:grid-cols-12">
-
-        {/* Generated code — shows text built up to currentStep */}
         <section className="flex flex-col gap-1.5 lg:col-span-4">
           <div className="flex items-center gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
@@ -290,7 +332,6 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* Active step detail — wider forensic panel */}
         <section className="flex flex-col gap-1.5 lg:col-span-8">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
             Step Detail — SynCode Forensics
@@ -307,7 +348,6 @@ export default function HomePage() {
         </section>
       </div>
 
-      {/* ── Step player ───────────────────────────────────────────────── */}
       <StepPlayer
         totalSteps={experiment.total_steps}
         currentStep={currentStep}
@@ -318,20 +358,16 @@ export default function HomePage() {
         onIntervalChange={setPlayIntervalMs}
       />
 
-      {/* ── Top masked tokens (current step) ───────────────────────────── */}
       <TopMaskedTokensPanel step={activeStep} mode={experiment.mode} />
 
-      {/* ── Step analysis export ───────────────────────────────────────── */}
       <StepAnalysisExportPanel
         experiment={experiment}
         step={activeStep}
         stepIndex={currentStep}
       />
 
-      {/* ── Parser tree export ─────────────────────────────────────────── */}
       <ParserTreeExportPanel experiment={experiment} />
 
-      {/* ── Entropy chart ─────────────────────────────────────────────── */}
       <div className="rounded-md border border-surface-border bg-surface-raised px-3 py-2">
         <EntropyChart
           steps={experiment.steps}
@@ -340,7 +376,6 @@ export default function HomePage() {
         />
       </div>
 
-      {/* ── Full decoding timeline ────────────────────────────────────── */}
       <section className="flex flex-col gap-1.5">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
           Decoding Timeline — {experiment.total_steps} step{experiment.total_steps !== 1 ? "s" : ""}
@@ -350,7 +385,6 @@ export default function HomePage() {
           onStepSelect={setCurrentStep}
         />
       </section>
-
     </div>
   );
 }

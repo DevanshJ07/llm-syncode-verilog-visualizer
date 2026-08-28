@@ -2,6 +2,7 @@ import Link from "next/link";
 
 const NAV_LINKS = [
   { href: "/", label: "Generate" },
+  { href: "/?source=imported", label: "Import" },
   { href: "/compare", label: "Compare" },
 ];
 

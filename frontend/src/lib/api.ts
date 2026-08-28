@@ -11,12 +11,19 @@ import type {
   GenerateResponse,
   StepResponse,
 } from "@/types/decoding";
+import type {
+  ImportedExperimentSummary,
+  NormalizedExperiment,
+} from "@/types/normalized";
 
 const BASE = "/api";
 const DEBUG_API = process.env.NODE_ENV === "development";
 
 /** Generation can run many minutes on CPU — do not abort early. */
 const GENERATE_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Import ZIP can be large but should not need model load. */
+const IMPORT_CLIENT_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** Parse FastAPI error bodies into a human-readable string. */
 export function formatApiError(status: number, body: string): string {
@@ -26,6 +33,22 @@ export function formatApiError(status: number, body: string): string {
     if (typeof detail === "string") {
       return `API ${status}: ${detail}`;
     }
+    if (Array.isArray(detail)) {
+      const parts = detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object") {
+            const o = item as Record<string, unknown>;
+            if (typeof o.msg === "string") return o.msg;
+            if (typeof o.message === "string") return o.message;
+          }
+          return null;
+        })
+        .filter(Boolean);
+      if (parts.length) {
+        return `API ${status}: ${parts.join("; ")}`;
+      }
+    }
     if (detail && typeof detail === "object") {
       const d = detail as Record<string, unknown>;
       const message =
@@ -33,7 +56,7 @@ export function formatApiError(status: number, body: string): string {
           ? d.message
           : typeof d.error === "string"
             ? d.error
-            : "Generation failed";
+            : "Request failed";
       const reasons = Array.isArray(d.reasons)
         ? (d.reasons as string[]).join("; ")
         : "";
@@ -50,24 +73,30 @@ export function formatApiError(status: number, body: string): string {
 async function request<T>(
   path: string,
   init?: RequestInit,
-  options?: { timeoutMs?: number }
+  options?: { timeoutMs?: number; json?: boolean }
 ): Promise<T> {
   if (DEBUG_API) {
     console.debug("[API request]", init?.method ?? "GET", path);
   }
 
   const timeoutMs = options?.timeoutMs;
+  const useJson = options?.json !== false;
   const controller = timeoutMs ? new AbortController() : undefined;
   const timer =
     timeoutMs && controller
       ? setTimeout(() => controller.abort(), timeoutMs)
       : undefined;
 
+  const headers = new Headers(init?.headers);
+  if (useJson && !headers.has("Content-Type") && init?.body) {
+    headers.set("Content-Type", "application/json");
+  }
+
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers,
       signal: controller?.signal ?? init?.signal,
     });
   } catch (err) {
@@ -179,7 +208,7 @@ export async function postGenerate(
 }
 
 // ---------------------------------------------------------------------------
-// Experiments
+// Experiments (live)
 // ---------------------------------------------------------------------------
 
 export async function getExperiment(id: string): Promise<ExperimentResult> {
@@ -195,6 +224,46 @@ export async function getExperimentStep(
 
 export async function listExperiments(): Promise<string[]> {
   return request<string[]>("/experiments");
+}
+
+// ---------------------------------------------------------------------------
+// Imported experiments (Phase 2A.2 / 2B.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /import/bundle — multipart ZIP upload.
+ * Do not set Content-Type manually (browser must supply the boundary).
+ */
+export async function postImportBundle(
+  file: File,
+  recomputeWithCurrentGrammar = false
+): Promise<NormalizedExperiment> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append(
+    "recompute_with_current_grammar",
+    recomputeWithCurrentGrammar ? "true" : "false"
+  );
+  return request<NormalizedExperiment>(
+    "/import/bundle",
+    {
+      method: "POST",
+      body: form,
+    },
+    { timeoutMs: IMPORT_CLIENT_TIMEOUT_MS, json: false }
+  );
+}
+
+export async function listImportedExperiments(): Promise<
+  ImportedExperimentSummary[]
+> {
+  return request<ImportedExperimentSummary[]>("/imported-experiments");
+}
+
+export async function getImportedExperiment(
+  id: string
+): Promise<NormalizedExperiment> {
+  return request<NormalizedExperiment>(`/imported-experiment/${id}`);
 }
 
 // ---------------------------------------------------------------------------
