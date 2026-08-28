@@ -1,16 +1,15 @@
 "use client";
 
 /**
- * Imported experiment detail — Phase 2B.1 basic view.
+ * Imported experiment detail — Phase 2B.1 metadata + Phase 2B.2 trace viewer.
  * URL: /imported-experiment/[id]
- *
- * Does not include full token-step masking visualization (Phase 2B.2).
  */
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
+import { ImportedTraceViewer } from "@/components/import/ImportedTraceViewer";
 import { CodeViewer } from "@/components/output/CodeViewer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -322,11 +321,12 @@ export default function ImportedExperimentPage() {
             )}
           </section>
 
-          <p className="text-xs text-[#484f58]">
-            Trace contains {prompt.steps.length} step
-            {prompt.steps.length === 1 ? "" : "s"}. Full token-step masking
-            visualization is deferred to Phase 2B.2.
-          </p>
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+              Token-step masking visualization
+            </h3>
+            <ImportedTraceViewer prompt={prompt} />
+          </section>
         </>
       )}
     </div>
