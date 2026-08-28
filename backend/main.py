@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import generate as generate_router
 from app.api.routes import experiments as experiments_router
 from app.api.routes import debug as debug_router
+from app.api.routes import imported_experiments as imported_experiments_router
 from app.core.config import settings
 from app.services.grammar_diagnostics import log_grammar_diagnostics, run_grammar_diagnostics
 from app.services.llm_service import llm_service
@@ -64,9 +65,17 @@ app.add_middleware(
 app.include_router(generate_router.router, tags=["Generation"])
 app.include_router(experiments_router.router, tags=["Experiments"])
 app.include_router(debug_router.router, tags=["Debug"])
+app.include_router(
+    imported_experiments_router.router, tags=["Imported Experiments"]
+)
 
-# Backward-compatible alias: some clients proxy to /api/generate on the backend.
+# Backward-compatible alias: some clients proxy to /api/* on the backend.
 app.include_router(generate_router.router, prefix="/api", tags=["Generation"])
+app.include_router(
+    imported_experiments_router.router,
+    prefix="/api",
+    tags=["Imported Experiments"],
+)
 
 
 @app.get("/health", tags=["Meta"])

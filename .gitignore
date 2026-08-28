@@ -24,6 +24,7 @@ frontend/.turbo/
 
 # Logs / experiment data (keep structure, not content)
 logs/experiments/
+logs/imported_experiments/
 backend/logs/
 
 # Syncode DFA mask store cache (large binary, rebuilt automatically)

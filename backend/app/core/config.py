@@ -27,6 +27,10 @@ class Settings(BaseSettings):
 
     # Storage — experiments are stored as JSON files under this directory
     experiments_dir: str = "logs/experiments"
+    # Imported (Phase 2A) normalized experiments — separate from live runs
+    imported_experiments_dir: str = "logs/imported_experiments"
+    # Compressed ZIP upload size limit for POST /import/bundle
+    max_import_upload_bytes: int = 50 * 1024 * 1024  # 50 MiB
 
     # Feature flags
     # Syncode grammar-constrained decoding — enabled by default now that
