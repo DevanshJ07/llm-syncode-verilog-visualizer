@@ -3,7 +3,7 @@ Strict grammar firewall for SynViz constrained decoding.
 
 Invariant: a token may remain finite only if appending its decoded text to the
 exact current generated prefix leaves a complete or extendable path under
-backend/verilog.lark.
+backend/grammar/verilog.lark.
 
 Uses SynCode's incremental parser (basic lexer — same as MaskStore construction)
 as the oracle.  Does not trust SynCode's overapproximate accept mask alone.
@@ -184,7 +184,7 @@ class PrefixOracle:
 
     def _prefix_extendable(self, text: str) -> bool:
         """
-        Exact extendability under verilog.lark (basic lexer), including
+        Exact extendability under backend/grammar/verilog.lark (basic lexer), including
         valid-incomplete remainders.  Rejects keyword/IDENTIFIER mismatches
         that SynCode's IDENTIFIER DFA overapprox leaves finite.
         """
@@ -263,7 +263,7 @@ class SelectedTokenGuardResult:
 
 
 def _prefix_fully_parses(text: str) -> bool:
-    """True when *text* is a complete successful parse under verilog.lark."""
+    """True when *text* is a complete successful parse under the canonical grammar."""
     if not text or not str(text).strip():
         return False
     try:

@@ -21,7 +21,8 @@ module fa_cell(a, b, carry_in, sum, carry_out);
 endmodule
 """
 
-INVALID_ALWAYS = """\
+# Valid under the canonical VerilogEval subset grammar (always/reg/@ supported).
+VALID_ALWAYS_REG = """\
 module bad(a, sum);
   input a;
   output reg sum;
@@ -29,11 +30,24 @@ module bad(a, sum);
 endmodule
 """
 
-INVALID_INPUT_WIRE = """\
+# Valid under the canonical grammar (ANSI-style port_kind wire).
+VALID_INPUT_WIRE = """\
 module bad(a, y);
   input wire a;
   output y;
   assign y = a;
+endmodule
+"""
+
+UNSUPPORTED_GENERATE = """\
+module gen_demo(a, y);
+  input a;
+  output y;
+  generate
+    if (1) begin
+      assign y = a;
+    end
+  endgenerate
 endmodule
 """
 
@@ -80,24 +94,33 @@ def test_valid_full_adder_parses():
     assert result.final_parse_error == ""
 
 
-def test_always_reg_case_detected():
-    unsupported = detect_unsupported_constructs(INVALID_ALWAYS)
-    assert "always" in unsupported
-    assert "reg" in unsupported
-    assert "@" in unsupported
+def test_always_reg_parses_under_canonical_grammar():
+    unsupported = detect_unsupported_constructs(VALID_ALWAYS_REG)
+    assert "always" not in unsupported
+    assert "reg" not in unsupported
+    assert "@" not in unsupported
 
-    result = validate_verilog_output(INVALID_ALWAYS)
+    result = validate_verilog_output(VALID_ALWAYS_REG)
+    assert result.final_parse_valid is True
+    assert result.unsupported_constructs_detected == []
+
+
+def test_input_wire_parses_under_canonical_grammar():
+    result = validate_verilog_output(VALID_INPUT_WIRE)
+    assert result.final_parse_valid is True
+    assert "input wire" not in result.unsupported_constructs_detected
+
+
+def test_generate_flagged_as_unsupported_and_does_not_parse():
+    unsupported = detect_unsupported_constructs(UNSUPPORTED_GENERATE)
+    assert "generate" in unsupported
+
+    result = validate_verilog_output(UNSUPPORTED_GENERATE)
     assert result.final_parse_valid is False
-    assert "always" in result.unsupported_constructs_detected
+    assert "generate" in result.unsupported_constructs_detected
 
 
-def test_input_wire_detected():
-    result = validate_verilog_output(INVALID_INPUT_WIRE)
-    assert result.final_parse_valid is False
-    assert "input wire" in result.unsupported_constructs_detected
-
-
-def test_arithmetic_division_outside_comments_is_detected():
+def test_arithmetic_division_parses_and_is_not_flagged_unsupported():
     code = """\
 module div(a, b, y);
   input a, b;
@@ -107,8 +130,7 @@ endmodule
 """
     result = validate_verilog_output(code)
     assert result.final_parse_valid is True
-    assert "arithmetic /" in result.unsupported_constructs_detected
-    assert "arithmetic /" in result.unsupported_constructs_detected
+    assert "arithmetic /" not in result.unsupported_constructs_detected
 
 
 def test_partial_constraint_not_marked_applied_when_output_invalid():
@@ -119,7 +141,7 @@ def test_partial_constraint_not_marked_applied_when_output_invalid():
         syncode_active_steps=10,
         syncode_fallback_steps=54,
         final_parse_valid=False,
-        final_parse_error="unsupported constructs detected: always",
+        final_parse_error="unsupported constructs detected: generate",
     )
     assert evidence.constraint_status == "partial"
     assert evidence.constraint_applied is False

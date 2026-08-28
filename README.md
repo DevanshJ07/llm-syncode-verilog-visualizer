@@ -25,6 +25,19 @@ probability distribution.
 
 ---
 
+## Grammar
+
+SynViz loads exactly one canonical Verilog Lark grammar:
+
+- **Path:** `backend/grammar/verilog.lark`
+- **Access:** `app.core.grammar` (shared by Lark validation and SynCode)
+
+Obsolete copies (`verilog.lark` at the repo root, `backend/verilog.lark`, and
+`backend/verilog_old_before_update.lark`) have been removed and are not loadable.
+Historical docs that still mention those paths refer to older layouts only.
+
+---
+
 ## Project Structure
 
 ```
@@ -33,9 +46,12 @@ llm-syncode-visualizer/
 │   ├── main.py                 # App entry point + lifespan hooks
 │   ├── requirements.txt
 │   ├── .env.example
+│   ├── grammar/
+│   │   └── verilog.lark        # Canonical Verilog Lark grammar
 │   └── app/
 │       ├── core/
-│       │   └── config.py       # Settings (pydantic-settings)
+│       │   ├── config.py       # Settings (pydantic-settings)
+│       │   └── grammar.py      # Canonical grammar path / reader
 │       ├── models/
 │       │   └── schemas.py      # Pydantic request/response/data models
 │       ├── api/

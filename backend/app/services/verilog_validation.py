@@ -1,15 +1,17 @@
 """
-Final-output validation against the tested Verilog Lark grammar.
+Final-output validation against the canonical Verilog Lark grammar
+(``backend/grammar/verilog.lark``).
 
 Used after generation to determine whether the produced module is actually
-valid under grammar=verilog, parser=lalr — independent of whether SynCode
+valid under the SynViz grammar (parser=lalr) — independent of whether SynCode
 masking was attempted during decoding.
 
 Comment handling:
   The tested grammar %ignore's COMMENT (// ...) and NEWLINE.  Slashes inside
   line comments must never be flagged as arithmetic division.  Block comments
   (/* ... */) are not in the grammar and are stripped before parse/scan.
-  Unsupported-construct regex scans run on comment-stripped code only.
+  Unsupported-construct regex scans run on comment-stripped code only and cover
+  intentionally reserved-but-unreachable constructs (generate/function/task).
 """
 
 from __future__ import annotations
@@ -25,9 +27,13 @@ import types
 from dataclasses import dataclass, field
 from functools import lru_cache
 
-_VERILOG_GRAMMAR_PATH: str = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "verilog.lark")
+from app.core.grammar import (
+    CANONICAL_GRAMMAR_PATH,
+    read_verilog_grammar,
 )
+
+# Compatibility alias — path resolution lives only in app.core.grammar.
+_VERILOG_GRAMMAR_PATH: str = str(CANONICAL_GRAMMAR_PATH)
 
 _STUB_ATTR = "_verilog_validation_lark_stub"
 
@@ -38,26 +44,17 @@ _BLOCK_COMMENT_RE = re.compile(r"/\*[^*]*\*/", re.DOTALL)
 # Line comments match grammar token: COMMENT: "//" /[^\n]*/ NEWLINE
 _LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 
-# Constructs outside the tested grammar — scanned on comment-stripped code only.
+# Constructs intentionally outside the canonical VerilogEval subset grammar
+# (see backend/grammar/verilog.lark reserved-but-unreachable terminals).
+# Supported RTL (always/reg/case/vectors/arithmetic/…) is NOT listed here.
 _UNSUPPORTED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("always", re.compile(r"\balways\b", re.IGNORECASE)),
-    ("reg", re.compile(r"\breg\b", re.IGNORECASE)),
-    ("case", re.compile(r"\bcase\b", re.IGNORECASE)),
-    ("begin", re.compile(r"\bbegin\b", re.IGNORECASE)),
-    ("end (not endmodule)", re.compile(r"\bend\b(?!module\b)", re.IGNORECASE)),
-    ("@", re.compile(r"@")),
-    ("input wire", re.compile(r"\binput\s+wire\b", re.IGNORECASE)),
-    ("output reg", re.compile(r"\boutput\s+reg\b", re.IGNORECASE)),
-    ("if", re.compile(r"\bif\b", re.IGNORECASE)),
-    ("else", re.compile(r"\belse\b", re.IGNORECASE)),
-    ("parameter", re.compile(r"\bparameter\b", re.IGNORECASE)),
     ("generate", re.compile(r"\bgenerate\b", re.IGNORECASE)),
-    ("vector/range", re.compile(r"\[[^\]]+\]")),
-    ("arithmetic +", re.compile(r"\+")),
-    ("arithmetic -", re.compile(r"(?<![a-zA-Z0-9_])-(?![a-zA-Z0-9_])")),
-    ("arithmetic *", re.compile(r"\*")),
-    ("arithmetic /", re.compile(r"/")),
-    ("arithmetic %", re.compile(r"%")),
+    ("endgenerate", re.compile(r"\bendgenerate\b", re.IGNORECASE)),
+    ("genvar", re.compile(r"\bgenvar\b", re.IGNORECASE)),
+    ("function", re.compile(r"\bfunction\b", re.IGNORECASE)),
+    ("endfunction", re.compile(r"\bendfunction\b", re.IGNORECASE)),
+    ("task", re.compile(r"\btask\b", re.IGNORECASE)),
+    ("endtask", re.compile(r"\bendtask\b", re.IGNORECASE)),
 ]
 
 
@@ -125,17 +122,6 @@ class ConstraintEvidence:
     constraint_active_during_generation: bool = False
     raw_unconstrained_generation_used: bool = False
     unconstrained_reason: str = ""
-
-
-def read_verilog_grammar() -> str:
-    if not os.path.isfile(_VERILOG_GRAMMAR_PATH):
-        raise FileNotFoundError(
-            f"Verilog grammar file not found: {_VERILOG_GRAMMAR_PATH}"
-        )
-    with open(_VERILOG_GRAMMAR_PATH, "r", encoding="utf-8") as fh:
-        content = fh.read()
-    _log.info("[grammar] Loaded updated Verilog grammar from: %s", _VERILOG_GRAMMAR_PATH)
-    return content
 
 
 def strip_verilog_comments(code: str) -> str:

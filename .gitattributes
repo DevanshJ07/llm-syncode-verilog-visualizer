@@ -1,0 +1,2 @@
+# Keep Lark grammar sources LF-normalized (matches verified experiment hash).
+*.lark text eol=lf

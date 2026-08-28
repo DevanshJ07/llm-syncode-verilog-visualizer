@@ -1,5 +1,5 @@
 """
-Grammar/runtime conformance: token-by-token SynCode mask vs verilog.lark.
+Grammar/runtime conformance: token-by-token SynCode mask vs canonical grammar.
 
 Tests the constraint contract (not NL prompts). Does not scan full vocab.
 """
@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 import torch
 
-GRAMMAR_PATH = Path(__file__).resolve().parents[1] / "verilog.lark"
+from app.core.grammar import CANONICAL_GRAMMAR_PATH
+
+GRAMMAR_PATH = CANONICAL_GRAMMAR_PATH
 MODEL_NAME = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
 
 # Representative programs covering major supported productions.

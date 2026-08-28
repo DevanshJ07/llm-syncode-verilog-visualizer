@@ -8,40 +8,26 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
-# Absolute, normalised path to the Verilog Lark grammar file.
-_VERILOG_GRAMMAR_PATH: str = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "verilog.lark")
-)
-
-
-def _read_verilog_grammar() -> str:
-    """
-    Read the Verilog Lark grammar file and return its content as a string.
-
-    Syncode's Grammar constructor accepts either a built-in name ('c', 'python')
-    or a raw Lark grammar string.  Passing the file content directly (instead of
-    a path) avoids any ambiguity about how Grammar() resolves file paths and works
-    regardless of the current working directory.
-
-    Raises FileNotFoundError if the grammar file is missing so the error surfaces
-    at startup rather than silently falling back to an unconstrained mode.
-    """
-    if not os.path.isfile(_VERILOG_GRAMMAR_PATH):
-        raise FileNotFoundError(
-            f"Verilog grammar file not found at: {_VERILOG_GRAMMAR_PATH}. "
-            "Make sure verilog.lark exists in the backend/ directory."
-        )
-    with open(_VERILOG_GRAMMAR_PATH, "r", encoding="utf-8") as fh:
-        content = fh.read()
-    logging.getLogger(__name__).info(
-        "[grammar] Loaded updated Verilog grammar from: %s", _VERILOG_GRAMMAR_PATH
-    )
-    return content
-
 import torch
 import torch.nn.functional as F
 
 from app.core.config import settings
+from app.core.grammar import (
+    CANONICAL_GRAMMAR_PATH,
+    read_verilog_grammar,
+)
+
+# Compatibility aliases — single implementation lives in app.core.grammar.
+_VERILOG_GRAMMAR_PATH: str = str(CANONICAL_GRAMMAR_PATH)
+
+
+def _read_verilog_grammar() -> str:
+    """Read canonical grammar text via ``app.core.grammar.read_verilog_grammar``."""
+    content = read_verilog_grammar()
+    logging.getLogger(__name__).info(
+        "[grammar] Loaded Verilog grammar from: %s", _VERILOG_GRAMMAR_PATH
+    )
+    return content
 from app.models.schemas import (
     DecodingStep,
     MaskedTokenEntry,
@@ -231,7 +217,7 @@ class _SyncodeConstraint:
 
     Real API (confirmed against syncode 0.4.16):
         from syncode import Grammar, SyncodeLogitsProcessor
-        grammar   = Grammar('/path/to/verilog.lark')  # path to custom Lark file
+        grammar   = Grammar(read_verilog_grammar())  # canonical backend/grammar/verilog.lark
         processor = SyncodeLogitsProcessor(
                         grammar, tokenizer,
                         use_cache=True,          # caches DFA mask store to disk

@@ -11,17 +11,17 @@ from __future__ import annotations
 
 from app.console_safe import _safe_console_print
 
-import importlib.util
 import json
 import logging
 import os
 import sys
 import traceback
-import types
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from app.services.verilog_validation import (
-    _VERILOG_GRAMMAR_PATH,
+from app.core.grammar import (
+    CANONICAL_GRAMMAR_PATH,
+    grammar_byte_size,
+    grammar_sha256,
     read_verilog_grammar,
 )
 
@@ -69,6 +69,8 @@ def ensure_syncode_evaluation_metadata() -> None:
 @dataclass
 class GrammarDiagnosticResult:
     grammar_path: str = ""
+    grammar_sha256: str = ""
+    grammar_byte_size: int = 0
     lark_compile_ok: bool = False
     lark_compile_error: str = ""
     syncode_grammar_ok: bool = False
@@ -111,10 +113,14 @@ def run_grammar_diagnostics(
     clear_verilog_validation_syncode_stub()
     ensure_syncode_evaluation_metadata()
 
-    result = GrammarDiagnosticResult(grammar_path=_VERILOG_GRAMMAR_PATH)
+    result = GrammarDiagnosticResult(
+        grammar_path=str(CANONICAL_GRAMMAR_PATH.resolve()),
+    )
 
     # --- A. Lark compile ---------------------------------------------------
     try:
+        result.grammar_sha256 = grammar_sha256()
+        result.grammar_byte_size = grammar_byte_size()
         grammar_text = read_verilog_grammar()
         from app.services.verilog_validation import _load_lark_module  # noqa: PLC0415
 
@@ -169,12 +175,25 @@ def run_grammar_diagnostics(
 
 def log_grammar_diagnostics(diag: GrammarDiagnosticResult) -> None:
     """Print startup diagnostic lines requested for research visibility."""
-    _safe_console_print(f"[grammar] active verilog grammar path: {diag.grammar_path}", flush=True)
+    _safe_console_print(
+        f"[grammar] active verilog grammar path: {diag.grammar_path}",
+        flush=True,
+    )
+    _safe_console_print(
+        f"[grammar] sha256: {diag.grammar_sha256 or '(unavailable)'}",
+        flush=True,
+    )
+    _safe_console_print(
+        f"[grammar] byte size: {diag.grammar_byte_size}",
+        flush=True,
+    )
     if diag.lark_compile_ok:
         _safe_console_print("[grammar] lark parse compile: success", flush=True)
     else:
         _safe_console_print("[grammar] lark parse compile: failure", flush=True)
-        _safe_console_print(f"[grammar] error details: {diag.lark_compile_error}", flush=True)
+        _safe_console_print(
+            f"[grammar] error details: {diag.lark_compile_error}", flush=True
+        )
 
     if diag.syncode_grammar_ok:
         _safe_console_print("[grammar] syncode grammar load: success", flush=True)
@@ -189,6 +208,11 @@ def log_grammar_diagnostics(diag: GrammarDiagnosticResult) -> None:
         _safe_console_print("[grammar] syncode mask store: loaded", flush=True)
     elif diag.syncode_mask_store_error:
         _safe_console_print("[grammar] syncode mask store: unavailable", flush=True)
-        _safe_console_print(f"[grammar] error details: {diag.syncode_mask_store_error}", flush=True)
+        _safe_console_print(
+            f"[grammar] error details: {diag.syncode_mask_store_error}", flush=True
+        )
     else:
-        _safe_console_print("[grammar] syncode mask store: not probed (awaiting tokenizer)", flush=True)
+        _safe_console_print(
+            "[grammar] syncode mask store: not probed (awaiting tokenizer)",
+            flush=True,
+        )

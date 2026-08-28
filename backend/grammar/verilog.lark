@@ -1,0 +1,351 @@
+// SynCode-compatible SystemVerilog subset for NVlabs VerilogEval spec-to-RTL.
+//
+// Scope: synthesizable RTL constructs required by the 156 prompt interfaces
+// and their representative solutions. This is intentionally not a complete
+// IEEE 1800 grammar.
+
+
+// 1. Source text
+start: module+ END_OF_TEXT?
+
+
+// 2. Reserved words
+//
+// These terminals are explicit because SynCode/interegular cannot process the
+// negative-lookahead and word-boundary regex previously used by IDENTIFIER.
+// They are declared before IDENTIFIER so exact keywords win, while longer
+// names such as input_sig remain a single IDENTIFIER.
+MODULE: "module"
+ENDMODULE: "endmodule"
+INPUT: "input"
+OUTPUT: "output"
+INOUT: "inout"
+WIRE: "wire"
+REG: "reg"
+LOGIC: "logic"
+INTEGER: "integer"
+INT: "int"
+SIGNED: "signed"
+UNSIGNED: "unsigned"
+PARAMETER: "parameter"
+LOCALPARAM: "localparam"
+TYPEDEF: "typedef"
+ENUM: "enum"
+ASSIGN: "assign"
+ALWAYS: "always"
+ALWAYS_COMB: "always_comb"
+ALWAYS_FF: "always_ff"
+BEGIN: "begin"
+END: "end"
+IF: "if"
+ELSE: "else"
+CASE: "case"
+CASEZ: "casez"
+CASEX: "casex"
+ENDCASE: "endcase"
+DEFAULT: "default"
+FOR: "for"
+WHILE: "while"
+REPEAT: "repeat"
+POSEDGE: "posedge"
+NEGEDGE: "negedge"
+OR_KW: "or"
+
+// Reserve unsupported SystemVerilog words instead of allowing them to become
+// identifiers. The sentinel makes Lark retain otherwise-unused terminals but
+// can never be produced by a valid VerilogEval answer.
+INITIAL: "initial"
+GENERATE: "generate"
+ENDGENERATE: "endgenerate"
+GENVAR: "genvar"
+FUNCTION: "function"
+ENDFUNCTION: "endfunction"
+TASK: "task"
+ENDTASK: "endtask"
+_keep_unsupported_reserved: "!UNREACHABLE_RESERVED!" (INITIAL | GENERATE | ENDGENERATE | GENVAR | FUNCTION | ENDFUNCTION | TASK | ENDTASK)
+
+
+// 3. Modules and port lists
+module: MODULE name_of_module parameter_port_list? list_of_ports? ";" module_item* ENDMODULE
+
+?name_of_module: IDENTIFIER
+
+parameter_port_list: "#" "(" parameter_assignment ("," parameter_assignment)* ")"
+
+// Both styles used by the benchmark are accepted:
+//   module TopModule(a, b);                  // non-ANSI
+//   module TopModule(input [7:0] a, output b); // ANSI
+list_of_ports: "(" [port ("," port)*] ")"
+
+?port: ansi_port_declaration
+     | IDENTIFIER
+
+ansi_port_declaration: port_direction port_kind? signedness? packed_dimension* IDENTIFIER unpacked_dimension*
+
+?port_direction: INPUT | OUTPUT | INOUT
+?port_kind: WIRE | REG | LOGIC
+?signedness: SIGNED | UNSIGNED
+
+
+// 4. Module items and declarations
+?module_item: port_declaration
+            | data_declaration
+            | parameter_declaration
+            | enum_declaration
+            | continuous_assign
+            | identifier_led_module_item
+            | gate_instantiation
+            | initial_construct
+            | always_construct
+            | _keep_unsupported_reserved
+
+?port_declaration: input_declaration
+                 | output_declaration
+                 | inout_declaration
+
+input_declaration: INPUT port_kind? signedness? packed_dimension* variable_declarator_list ";"
+
+output_declaration: OUTPUT port_kind? signedness? packed_dimension* variable_declarator_list ";"
+
+inout_declaration: INOUT port_kind? signedness? packed_dimension* variable_declarator_list ";"
+
+data_declaration: data_type signedness? packed_dimension* variable_declarator_list ";"
+
+?data_type: WIRE | REG | LOGIC | INTEGER | INT
+
+parameter_declaration: (PARAMETER | LOCALPARAM) parameter_type? parameter_assignment ("," parameter_assignment)* ";"
+
+?parameter_type: data_type signedness? packed_dimension*
+               | signedness packed_dimension*
+               | packed_dimension+
+
+parameter_assignment: IDENTIFIER "=" expression
+
+enum_declaration: TYPEDEF ENUM enum_base_type? "{" enum_member ("," enum_member)* "}" IDENTIFIER ";"
+
+enum_base_type: (LOGIC | REG | INT | INTEGER)? signedness? packed_dimension*
+
+enum_member: IDENTIFIER ["=" expression]
+
+variable_declarator_list: variable_declarator ("," variable_declarator)*
+
+variable_declarator: IDENTIFIER unpacked_dimension* ["=" expression]
+
+packed_dimension: "[" expression ":" expression "]"
+
+unpacked_dimension: "[" expression ":" expression "]"
+                  | "[" expression "]"
+
+
+// 5. Continuous assignments and module instantiations
+continuous_assign: ASSIGN assignment ("," assignment)* ";"
+
+assignment: lvalue "=" expression
+
+// Left-factored because a leading IDENTIFIER may be either a user-defined
+// type (`States state;`) or an instantiated module name (`Adder u0 (...);`).
+// This avoids the module-type/user-type shift-reduce conflict.
+identifier_led_module_item: IDENTIFIER (variable_declarator_list ";" | parameter_value_assignment? module_instance ("," module_instance)* ";")
+
+gate_instantiation: gate_type module_instance ("," module_instance)* ";"
+
+?gate_type: "and" | "nand" | "or" | "nor" | "xor" | "xnor"
+          | "not" | "buf"
+
+parameter_value_assignment: "#" "(" [parameter_value ("," parameter_value)*] ")"
+
+?parameter_value: expression
+                | "." IDENTIFIER "(" expression? ")"
+
+module_instance: IDENTIFIER? "(" list_of_module_connections? ")"
+
+list_of_module_connections: named_port_connection ("," named_port_connection)*
+                          | expression ("," expression)*
+
+named_port_connection: "." IDENTIFIER "(" expression? ")"
+
+
+// 6. Procedural and sequential constructs
+initial_construct: INITIAL statement
+
+?always_construct: ALWAYS event_control statement
+                 | ALWAYS_COMB statement
+                 | ALWAYS_FF event_control statement
+
+event_control: "@" "(" event_expression ")"
+
+?event_expression: "*"
+                 | event_term (("," | OR_KW) event_term)*
+
+event_term: edge_identifier? expression
+
+?edge_identifier: POSEDGE | NEGEDGE
+
+?statement: sequential_block
+          | if_statement
+          | case_statement
+          | for_statement
+          | while_statement
+          | repeat_statement
+          | procedural_assignment ";"
+          | ";"
+
+sequential_block: BEGIN statement* END
+
+if_statement: IF "(" expression ")" statement [ELSE statement]
+
+case_statement: case_keyword "(" expression ")" case_item* ENDCASE
+
+?case_keyword: CASE | CASEZ | CASEX
+
+case_item: DEFAULT [":"] statement
+         | expression ("," expression)* ":" statement
+
+for_statement: FOR "(" for_initialization ";" expression ";" for_step ")" statement
+
+?for_initialization: loop_variable_declaration
+                   | procedural_assignment_no_semi
+
+loop_variable_declaration: (INT | INTEGER) IDENTIFIER "=" expression
+
+?for_step: procedural_assignment_no_semi
+         | IDENTIFIER "++"
+         | IDENTIFIER "--"
+
+while_statement: WHILE "(" expression ")" statement
+
+repeat_statement: REPEAT "(" expression ")" statement
+
+procedural_assignment: lvalue assignment_operator expression
+
+procedural_assignment_no_semi: lvalue assignment_operator expression
+
+?assignment_operator: "=" | "<=" | "+=" | "-=" | "*=" | "/="
+                    | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>="
+
+
+// 7. Lvalues, expressions, selections, concatenation, and replication
+?lvalue: variable_reference
+       | concatenation
+
+?expression: conditional
+
+?conditional: logical_or
+            | logical_or "?" expression ":" conditional
+
+?logical_or: logical_and
+           | logical_or "||" logical_and
+
+?logical_and: bitwise_or
+            | logical_and "&&" bitwise_or
+
+?bitwise_or: bitwise_xor
+           | bitwise_or "|" bitwise_xor
+
+?bitwise_xor: bitwise_and
+            | bitwise_xor "^" bitwise_and
+            | bitwise_xor "~^" bitwise_and
+            | bitwise_xor "^~" bitwise_and
+
+?bitwise_and: equality
+            | bitwise_and "&" equality
+
+?equality: relational
+         | equality "==" relational
+         | equality "!=" relational
+         | equality "===" relational
+         | equality "!==" relational
+
+?relational: shift
+           | relational "<" shift
+           | relational "<=" shift
+           | relational ">" shift
+           | relational ">=" shift
+
+?shift: addition
+      | shift "<<" addition
+      | shift ">>" addition
+      | shift "<<<" addition
+      | shift ">>>" addition
+
+?addition: multiplication
+         | addition "+" multiplication
+         | addition "-" multiplication
+
+?multiplication: power
+               | multiplication "*" power
+               | multiplication "/" power
+               | multiplication "%" power
+
+?power: unary
+      | unary "**" power
+
+?unary: postfix
+      | unary_operator unary
+
+// Includes logical/bitwise unary operators and all reduction operators.
+unary_operator: "!" | "~" | "+" | "-"
+              | "&" | "~&" | "|" | "~|" | "^" | "~^" | "^~"
+
+?postfix: primary select*
+
+?primary: NUMBER
+        | UNBASED_LITERAL
+        | variable_reference_base
+        | function_call
+        | cast_expression
+        | concatenation
+        | replication
+        | "(" expression ")"
+
+variable_reference: variable_reference_base select*
+
+?variable_reference_base: IDENTIFIER | SYSTEM_IDENTIFIER
+
+function_call: variable_reference_base "(" [expression ("," expression)*] ")"
+
+cast_expression: IDENTIFIER "'" "(" expression ")"
+
+select: "[" expression "]"
+      | "[" expression ":" expression "]"
+      | "[" expression "+:" expression "]"
+      | "[" expression "-:" expression "]"
+
+concatenation: "{" expression ("," expression)* "}"
+
+replication: "{" expression concatenation "}"
+
+
+// 8. Lexical rules
+IDENTIFIER.-10: NORMAL_IDENTIFIER | ESCAPED_IDENTIFIER
+
+// Exact reserved words must not also belong to IDENTIFIER.  Merely assigning
+// keyword priority is insufficient for SynCode's DFA masks because the
+// overlapping IDENTIFIER language would still make those strings reachable.
+// This lookaround-free regular expression is the regular-language difference
+// between a Verilog identifier and the 50 reserved words used by this subset.
+// It is generated by generate_keyword_safe_identifier.py and remains
+// compatible with interegular (no lookahead, lookbehind, or backreference).
+NORMAL_IDENTIFIER: /([A-Z_hjkqvyz][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-kmo-rt-z][$0-9A-Z_a-z]*|l(([$0-9A-Z_a-vx-z][$0-9A-Z_a-z]*|w(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-xz][$0-9A-Z_a-z]*|y(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s([$0-9A-Za-z][$0-9A-Z_a-z]*|_(([$0-9A-Z_abdeg-z][$0-9A-Z_a-z]*|c(([$0-9A-Z_a-np-z][$0-9A-Z_a-z]*|o(([$0-9A-Z_a-ln-z][$0-9A-Z_a-z]*|m(([$0-9A-Z_ac-z][$0-9A-Z_a-z]*|b[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?|f(([$0-9A-Z_a-eg-z][$0-9A-Z_a-z]*|f[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?)))?))?))?))?|n(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?|s(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_a-fh-z][$0-9A-Z_a-z]*|g(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?|b(([$0-9A-Z_a-df-tv-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-fh-z][$0-9A-Z_a-z]*|g(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?|u(([$0-9A-Z_a-eg-z][$0-9A-Z_a-z]*|f[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?|c(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e([$0-9A-Z_a-wy][$0-9A-Z_a-z]*|x[$0-9A-Z_a-z][$0-9A-Z_a-z]*|z[$0-9A-Z_a-z][$0-9A-Z_a-z]*)))?))?))?|d(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-eg-z][$0-9A-Z_a-z]*|f(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-tv-z][$0-9A-Z_a-z]*|u(([$0-9A-Z_a-km-z][$0-9A-Z_a-z]*|l(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?|e(([$0-9A-Z_a-kmo-z][$0-9A-Z_a-z]*|l(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?|n(([$0-9A-Z_a-ce-tv-z][$0-9A-Z_a-z]*|d([$0-9A-Z_abdeh-ln-su-z][$0-9A-Z_a-z]*|c(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?|f(([$0-9A-Z_a-tv-z][$0-9A-Z_a-z]*|u(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_abd-z][$0-9A-Z_a-z]*|c(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_a-np-z][$0-9A-Z_a-z]*|o(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?))?|g(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?))?|m(([$0-9A-Z_a-np-z][$0-9A-Z_a-z]*|o(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d(([$0-9A-Z_a-tv-z][$0-9A-Z_a-z]*|u(([$0-9A-Z_a-km-z][$0-9A-Z_a-z]*|l(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?|t(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s(([$0-9A-Z_a-jl-z][$0-9A-Z_a-z]*|k[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?)|u(([$0-9A-Z_a-ln-z][$0-9A-Z_a-z]*|m[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?|f(([$0-9A-Z_a-np-tv-z][$0-9A-Z_a-z]*|o(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?|u(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_abd-z][$0-9A-Z_a-z]*|c(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_a-np-z][$0-9A-Z_a-z]*|o(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?))?|g(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_a-df-uw-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?|v(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?|i(([$0-9A-Z_a-eg-mo-z][$0-9A-Z_a-z]*|f[$0-9A-Z_a-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_a-hj-nq-su-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-km-z][$0-9A-Z_a-z]*|l[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?|o(([$0-9A-Z_a-tv-z][$0-9A-Z_a-z]*|u(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?|p(([$0-9A-Z_a-tv-z][$0-9A-Z_a-z]*|u(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?|t([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-fh-z][$0-9A-Z_a-z]*|g(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?)))?))?|l(([$0-9A-Z_a-np-z][$0-9A-Z_a-z]*|o(([$0-9A-Z_abd-fh-z][$0-9A-Z_a-z]*|c(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-km-z][$0-9A-Z_a-z]*|l(([$0-9A-Z_a-oq-z][$0-9A-Z_a-z]*|p(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-ln-z][$0-9A-Z_a-z]*|m[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?))?|g(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_abd-z][$0-9A-Z_a-z]*|c[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?|m(([$0-9A-Z_a-np-z][$0-9A-Z_a-z]*|o(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d(([$0-9A-Z_a-tv-z][$0-9A-Z_a-z]*|u(([$0-9A-Z_a-km-z][$0-9A-Z_a-z]*|l(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?|n(([$0-9A-Z_b-df-np-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?|e(([$0-9A-Z_a-fh-z][$0-9A-Z_a-z]*|g(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d(([$0-9A-Z_a-fh-z][$0-9A-Z_a-z]*|g(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?|o(([$0-9A-Z_a-qsu-z][$0-9A-Z_a-z]*|r[$0-9A-Z_a-z][$0-9A-Z_a-z]*|t[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?|o(([$0-9A-Z_a-qstv-z][$0-9A-Z_a-z]*|r[$0-9A-Z_a-z][$0-9A-Z_a-z]*|u(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t(([$0-9A-Z_a-oq-z][$0-9A-Z_a-z]*|p(([$0-9A-Z_a-tv-z][$0-9A-Z_a-z]*|u(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?|p(([$0-9A-Z_b-np-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-ln-z][$0-9A-Z_a-z]*|m(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?))?|o(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d(([$0-9A-Z_a-fh-z][$0-9A-Z_a-z]*|g(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?|r(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-fh-oq-z][$0-9A-Z_a-z]*|g[$0-9A-Z_a-z][$0-9A-Z_a-z]*|p(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_b-z][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-su-z][$0-9A-Z_a-z]*|t[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?|s(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_a-fh-z][$0-9A-Z_a-z]*|g(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?|t(([$0-9A-Z_b-xz][$0-9A-Z_a-z]*|a(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s(([$0-9A-Z_a-jl-z][$0-9A-Z_a-z]*|k[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?|y(([$0-9A-Z_a-oq-z][$0-9A-Z_a-z]*|p(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-eg-z][$0-9A-Z_a-z]*|f[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?|u(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_a-rt-z][$0-9A-Z_a-z]*|s(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_a-fh-z][$0-9A-Z_a-z]*|g(([$0-9A-Z_a-mo-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e(([$0-9A-Z_a-ce-z][$0-9A-Z_a-z]*|d[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?))?))?))?))?|w(([$0-9A-Z_a-gj-z][$0-9A-Z_a-z]*|h(([$0-9A-Z_a-hj-z][$0-9A-Z_a-z]*|i(([$0-9A-Z_a-km-z][$0-9A-Z_a-z]*|l(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?|i(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r(([$0-9A-Z_a-df-z][$0-9A-Z_a-z]*|e[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?))?|x(([$0-9A-Z_a-mp-z][$0-9A-Z_a-z]*|n(([$0-9A-Z_a-np-z][$0-9A-Z_a-z]*|o(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?|o(([$0-9A-Z_a-qs-z][$0-9A-Z_a-z]*|r[$0-9A-Z_a-z][$0-9A-Z_a-z]*))?))?)/
+
+ESCAPED_IDENTIFIER: /\\[^\s]+/
+
+SYSTEM_IDENTIFIER: /\$[a-zA-Z_][a-zA-Z0-9_$]*/
+
+// Sized/unsized based numbers and ordinary decimal integers.
+NUMBER: /[0-9]*'[sS]?[bBoOdDhH][0-9a-fA-F_xXzZ?]+|[0-9]+/
+
+// SystemVerilog unbased unsized literals used by the benchmark: '0, '1, 'x, 'z.
+UNBASED_LITERAL: /'[01xXzZ]/
+
+END_OF_TEXT: "<|endoftext|>"
+
+
+// 9. Whitespace and comments
+LINE_COMMENT: /\/\/[^\n]*/
+BLOCK_COMMENT: /\/\*(.|\n)*?\*\//
+
+%import common.WS
+%ignore WS
+%ignore LINE_COMMENT
+%ignore BLOCK_COMMENT

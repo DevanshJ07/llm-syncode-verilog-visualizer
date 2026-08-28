@@ -13,10 +13,10 @@ from app.services.grammar_firewall import (
     PrefixOracle,
     select_valid_token,
 )
-from app.services.llm_service import _VERILOG_GRAMMAR_PATH
+from app.core.grammar import CANONICAL_GRAMMAR_PATH
 
 MODEL_NAME = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
-GRAMMAR_PATH = Path(__file__).resolve().parents[1] / "verilog.lark"
+GRAMMAR_PATH = CANONICAL_GRAMMAR_PATH
 
 PREFIX_PORT = "module mux2to1("
 MUX_REF = (
@@ -189,7 +189,7 @@ def test_C_mux_reference_token_by_token(bundle):
 
 
 def test_D_no_raw_fallback_and_no_exhaustive_firewall_in_service():
-    backend = Path(_VERILOG_GRAMMAR_PATH).resolve().parent
+    backend = CANONICAL_GRAMMAR_PATH.resolve().parents[1]  # backend/
     svc = (backend / "app" / "services" / "llm_service.py").read_text(encoding="utf-8")
     assert "using raw selection" not in svc
     assert "falling back to raw logits" not in svc
