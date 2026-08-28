@@ -12,6 +12,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 from app.models.provenance import Prov
+from app.models.parser_analysis import ParserAnalysis
 
 NORMALIZED_SCHEMA_VERSION = "2A.2"
 
@@ -190,6 +191,13 @@ class NormalizedPromptResult(BaseModel):
     )
     recomputed_parse_error: Prov[str] = Field(
         default_factory=lambda: Prov[str].unavailable()
+    )
+    # Phase 3A — structured parser analysis. Unavailable unless
+    # recompute_with_current_grammar=true at import time.
+    parser_analysis: Prov[ParserAnalysis] = Field(
+        default_factory=lambda: Prov[ParserAnalysis].unavailable(
+            method="recompute_with_current_grammar disabled or not run"
+        )
     )
     steps: list[NormalizedTraceStep] = Field(default_factory=list)
     source_files: list[SourceFileRef] = Field(default_factory=list)

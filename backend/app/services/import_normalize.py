@@ -26,6 +26,7 @@ from app.models.normalized import (
     TokenRef,
 )
 from app.models.provenance import Prov
+from app.models.parser_analysis import ParserAnalysis
 from app.services.import_zip import (
     BundleCategory,
     BundleMemberManifest,
@@ -945,12 +946,20 @@ def normalize_imported_bundle(
             recomputed_err = Prov[str].unavailable(
                 method="recompute_with_current_grammar disabled or not run"
             )
+            parser_analysis = Prov[ParserAnalysis].unavailable(
+                method="recompute_with_current_grammar disabled or not run"
+            )
             if recompute_with_current_grammar:
                 # Lark-only final-output check against backend/grammar/verilog.lark.
                 # Does not invoke SynCode or build a mask store.
                 from app.services.verilog_validation import (  # noqa: PLC0415
                     validate_verilog_output,
                 )
+                from app.services.parser_analysis import (  # noqa: PLC0415
+                    analyze_verilog_source,
+                    status_disagrees_with_recorded_verdict,
+                )
+                from app.models.provenance import ProvenanceKind  # noqa: PLC0415
 
                 val = validate_verilog_output(gen_text)
                 recomputed_verdict = Prov[str].recomputed(
@@ -970,18 +979,38 @@ def normalize_imported_bundle(
                         method="validate_verilog_output",
                         grammar_sha256=canonical_hash,
                     )
+
+                analysis = analyze_verilog_source(
+                    gen_text,
+                    provenance_kind=ProvenanceKind.recomputed,
+                    method="analyze_verilog_source",
+                    grammar_hash=canonical_hash,
+                )
+                parser_analysis = Prov[ParserAnalysis].recomputed(
+                    analysis,
+                    method="analyze_verilog_source",
+                    grammar_sha256=canonical_hash,
+                )
+
                 if (
                     not grammar_verdict.is_unavailable
                     and grammar_verdict.value is not None
-                    and recomputed_verdict.value is not None
-                    and _verdicts_disagree(
-                        str(grammar_verdict.value),
-                        str(recomputed_verdict.value),
+                    and (
+                        status_disagrees_with_recorded_verdict(
+                            str(grammar_verdict.value), analysis
+                        )
+                        or (
+                            recomputed_verdict.value is not None
+                            and _verdicts_disagree(
+                                str(grammar_verdict.value),
+                                str(recomputed_verdict.value),
+                            )
+                        )
                     )
                 ):
                     add_warn(
                         "recorded grammar verdict disagrees with "
-                        "recomputed canonical-grammar verdict"
+                        "recomputed canonical-grammar verdict / parser analysis"
                     )
 
             prompt_results.append(
@@ -1002,6 +1031,7 @@ def normalize_imported_bundle(
                     mask_counts=mask_counts,
                     recomputed_grammar_verdict=recomputed_verdict,
                     recomputed_parse_error=recomputed_err,
+                    parser_analysis=parser_analysis,
                     steps=steps,
                     source_files=source_refs,
                     warnings=warnings,

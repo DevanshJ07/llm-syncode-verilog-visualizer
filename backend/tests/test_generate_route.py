@@ -102,10 +102,15 @@ endmodule"""
 
 
 def test_generate_returns_200_with_invalid_verilog_flagged(client):
+    # Must be invalid under the canonical grammar (always/reg/@ are legal now).
     invalid = """module bad(a, y);
-  input wire a;
-  output reg y;
-  always @(*) y = a;
+  input a;
+  output y;
+  generate
+    if (1) begin
+      assign y = a;
+    end
+  endgenerate
 endmodule"""
     with patch(
         "app.api.routes.generate.llm_service.generate",
@@ -131,3 +136,10 @@ endmodule"""
     assert len(body["unsupported_constructs_detected"]) > 0
     assert body["constraint_applied"] is False
     assert body["mode"] == "syncode"
+    # Phase 3A: structured analysis present without breaking the response.
+    assert "parser_analysis" in body
+    assert body["parser_analysis"]["status"] in (
+        "incomplete_prefix",
+        "invalid_input",
+        "unavailable",
+    )

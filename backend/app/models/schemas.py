@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Optional
 from pydantic import BaseModel, Field
 
+from app.models.parser_analysis import ParserAnalysis, unavailable_parser_analysis
+
 
 # ---------------------------------------------------------------------------
 # Parser failure context — nested schema
@@ -320,6 +322,12 @@ class ExperimentResult(BaseModel):
         default_factory=ParserFailureContextSchema
     )
 
+    # Phase 3A — structured complete / partial / recovered parser analysis.
+    # Defaults to unavailable so older persisted experiment JSON still loads.
+    parser_analysis: ParserAnalysis = Field(
+        default_factory=unavailable_parser_analysis
+    )
+
 
 # ---------------------------------------------------------------------------
 # API request / response schemas
@@ -406,6 +414,11 @@ class GenerateResponse(BaseModel):
     parse_tree_previous_token: str = ""
     parser_failure_context: ParserFailureContextSchema = Field(
         default_factory=ParserFailureContextSchema
+    )
+
+    # Phase 3A — structured parser analysis (same shape as ExperimentResult).
+    parser_analysis: ParserAnalysis = Field(
+        default_factory=unavailable_parser_analysis
     )
 
     # --- Full decoding trace ---

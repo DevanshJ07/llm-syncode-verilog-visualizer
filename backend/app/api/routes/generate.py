@@ -18,6 +18,8 @@ from app.services.verilog_validation import (
     enrich_steps_with_incremental_parser_state,
     validate_verilog_output,
 )
+from app.services.parser_analysis import analyze_verilog_source
+from app.models.provenance import ProvenanceKind
 from app.core.config import settings
 
 log = logging.getLogger(__name__)
@@ -362,6 +364,32 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         likely_interpretation=_pfc.likely_interpretation if _pfc else "",
     )
 
+    # Phase 3A — structured parser analysis on final generated output.
+    # Does not alter token generation or SynCode masking. Legacy parse_tree_*
+    # fields above are preserved unchanged. Failures must not abort generation.
+    try:
+        experiment.parser_analysis = analyze_verilog_source(
+            clean_text,
+            provenance_kind=ProvenanceKind.derived,
+            method="analyze_verilog_source (live final output)",
+        )
+    except Exception as analysis_exc:  # noqa: BLE001
+        log.exception(
+            "[API /generate] parser analysis failed; continuing with unavailable"
+        )
+        from app.models.parser_analysis import (  # noqa: PLC0415
+            unavailable_parser_analysis,
+        )
+
+        experiment.parser_analysis = unavailable_parser_analysis(
+            method="analyze_verilog_source (live final output)",
+            warnings=[
+                f"unexpected parser analysis failure "
+                f"({type(analysis_exc).__name__}: {analysis_exc}); "
+                "live generation result preserved"
+            ],
+        )
+
     try:
         store.save(experiment)
         log.info(
@@ -432,6 +460,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         parse_tree_expected_terminals=parse_tree.parse_tree_expected_terminals,
         parse_tree_previous_token=parse_tree.parse_tree_previous_token,
         parser_failure_context=experiment.parser_failure_context,
+        parser_analysis=experiment.parser_analysis,
         steps=steps,
     )
 

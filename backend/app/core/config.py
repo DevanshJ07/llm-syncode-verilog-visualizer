@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     completion_extra_tokens: int = 80
     absolute_max_tokens: int = 200
 
+    # Phase 3A — structured parser-analysis safety limits (Lark only; no SynCode).
+    parser_analysis_max_source_chars: int = 200_000
+    parser_analysis_max_nodes: int = 5_000
+    parser_analysis_max_depth: int = 64
+
 
 # Singleton — import `settings` everywhere, never instantiate Settings directly.
 settings = Settings()

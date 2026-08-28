@@ -461,6 +461,7 @@ def test_recompute_disabled_by_default():
     pr = exp.prompt_results[0]
     assert pr.recomputed_grammar_verdict.is_unavailable
     assert pr.recomputed_parse_error.is_unavailable
+    assert pr.parser_analysis.is_unavailable
 
 
 def test_recompute_enabled_marks_recomputed_and_attaches_hash():
@@ -476,6 +477,11 @@ def test_recompute_enabled_marks_recomputed_and_attaches_hash():
     assert pr.grammar_verdict.provenance.kind == ProvenanceKind.recorded
     assert pr.grammar_valid.provenance.kind == ProvenanceKind.recorded
     assert exp.runtime_metadata.value["recompute_with_current_grammar"] is True
+    assert pr.parser_analysis.provenance.kind == ProvenanceKind.recomputed
+    assert pr.parser_analysis.value is not None
+    assert pr.parser_analysis.value.status == "complete_valid"
+    assert pr.parser_analysis.value.representation_kind == "complete_parse_tree"
+    assert pr.parser_analysis.value.grammar_sha256 == EXPECTED_GRAMMAR_SHA256
 
 
 def test_recorded_recomputed_disagreement_warning():
@@ -490,6 +496,8 @@ def test_recorded_recomputed_disagreement_warning():
     assert pr.grammar_verdict.value == "fail"
     # Canonical grammar should accept VALID_SV
     assert pr.recomputed_grammar_verdict.value == "valid"
+    assert pr.parser_analysis.value is not None
+    assert pr.parser_analysis.value.status == "complete_valid"
     assert any("disagrees" in w for w in pr.warnings)
 
 
