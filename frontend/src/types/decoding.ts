@@ -243,9 +243,61 @@ export interface GenerateRequest {
 }
 
 /**
- * POST /generate response — full decoding trace returned inline.
- * The experiment is also persisted; use experiment_id with GET /experiment/{id}
- * if you need to retrieve it later.
+ * POST /generate/jobs immediate acknowledgement.
+ */
+export interface GenerateJobCreatedResponse {
+  job_id: string;
+  status: string; // queued | running
+  created_at?: string;
+  status_path?: string;
+}
+
+/**
+ * GET /generate/jobs/{job_id} status payload.
+ */
+export interface GenerateJobStatusResponse {
+  job_id: string;
+  status: string; // queued | running | completed | failed
+  created_at?: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  message?: string;
+  experiment_id?: string | null;
+  detail_path?: string | null;
+  step_count?: number | null;
+  early_termination?: string | null;
+  final_parse_valid?: boolean | null;
+  mode?: string | null;
+  constraint_status?: string | null;
+  constraint_requested?: boolean | null;
+  constraint_active_during_generation?: boolean | null;
+  error?: string | null;
+  error_code?: string | null;
+}
+
+/**
+ * POST /generate lightweight acknowledgement (sync compat path).
+ * Full trace is persisted and loaded via GET /experiment/{experiment_id}.
+ */
+export interface GenerateCreatedResponse {
+  experiment_id: string;
+  status: string;
+  message?: string;
+  mode: string;
+  step_count: number;
+  early_termination?: string;
+  final_parse_valid?: boolean;
+  created_at?: string;
+  detail_path?: string;
+  model_name?: string;
+  constraint_status?: string;
+  constraint_requested?: boolean;
+  constraint_active_during_generation?: boolean;
+}
+
+/**
+ * @deprecated Historical full inline generate payload. POST /generate now
+ * returns GenerateCreatedResponse; use GET /experiment/{id} for ExperimentResult.
  */
 export interface GenerateResponse {
   // identity

@@ -3,13 +3,11 @@
 /**
  * Home page — Generate & Visualize / Import
  *
- * Source selector:
- *   Live Local Generation  — existing Qwen → SynCode workflow
- *   Imported Experiment    — ZIP import + list (Phase 2B.1)
+ * Live generation: POST /generate/jobs → poll status → navigate to detail.
  */
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import {
   ExperimentSourceSelector,
@@ -18,21 +16,10 @@ import {
 import { ImportExperimentPanel } from "@/components/import/ImportExperimentPanel";
 import { ImportedExperimentList } from "@/components/import/ImportedExperimentList";
 import { PromptForm } from "@/components/prompt/PromptForm";
-import { CodeViewer } from "@/components/output/CodeViewer";
-import { StepViewer } from "@/components/visualization/StepViewer";
-import { StepPlayer } from "@/components/visualization/StepPlayer";
-import { EntropyChart } from "@/components/visualization/EntropyChart";
-import { DecodingTimeline } from "@/components/visualization/DecodingTimeline";
-import { SyncodeEvidencePanel } from "@/components/visualization/SyncodeEvidencePanel";
-import { TopMaskedTokensPanel } from "@/components/visualization/TopMaskedTokensPanel";
-import { StepAnalysisExportPanel } from "@/components/visualization/StepAnalysisExportPanel";
-import { ParserTreeExportPanel } from "@/components/visualization/ParserTreeExportPanel";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
 import { Card } from "@/components/ui/Card";
+import { Spinner } from "@/components/ui/Spinner";
 import { useGeneration } from "@/hooks/useGeneration";
-import { formatPct } from "@/lib/utils";
 import { DEFAULT_MAX_NEW_TOKENS } from "@/lib/generationDefaults";
 import type { GenerateRequest } from "@/types/decoding";
 
@@ -51,12 +38,15 @@ export default function HomePage() {
 }
 
 function HomePageInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialSource: ExperimentSourceMode =
     searchParams.get("source") === "imported" ? "imported" : "live";
 
   const [source, setSource] = useState<ExperimentSourceMode>(initialSource);
   const [importRefreshKey, setImportRefreshKey] = useState(0);
+  const submitGuardRef = useRef(false);
+  const navigatedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get("source") === "imported") {
@@ -64,88 +54,47 @@ function HomePageInner() {
     }
   }, [searchParams]);
 
-  const { status, experiment, error, generate, reset } = useGeneration();
-
-  const [currentStep, setCurrentStep] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playIntervalMs, setPlayIntervalMs] = useState(1000);
-  const [showForm, setShowForm] = useState(true);
-
-  const isLoading = status === "generating";
-  const hasError = status === "error" && error !== null;
-  const hasResult =
-    status === "done" &&
-    experiment !== null &&
-    experiment.steps.length > 0 &&
-    experiment.total_steps > 0;
+  const {
+    phase,
+    jobId,
+    statusMessage,
+    error,
+    experimentId,
+    isBusy,
+    generate,
+    checkStatusAgain,
+  } = useGeneration();
 
   useEffect(() => {
-    if (hasResult) {
-      setCurrentStep(0);
-      setIsPlaying(false);
-      setShowForm(false);
-    }
-  }, [hasResult, experiment?.experiment_id]);
+    if (!isBusy) submitGuardRef.current = false;
+  }, [isBusy]);
 
   useEffect(() => {
-    if (!experiment) return;
-    if (currentStep >= experiment.total_steps - 1) {
-      setIsPlaying(false);
-    }
-  }, [currentStep, experiment]);
+    if (phase !== "completed" || !experimentId) return;
+    if (navigatedForRef.current === experimentId) return;
+    navigatedForRef.current = experimentId;
+    router.push(`/experiment/${experimentId}`);
+  }, [phase, experimentId, router]);
 
   const handleGenerate = useCallback(
     async (req: GenerateRequest) => {
-      reset();
-      setShowForm(true);
+      if (isBusy || submitGuardRef.current) return;
+      submitGuardRef.current = true;
       await generate(req);
     },
-    [generate, reset]
+    [generate, isBusy]
   );
-
-  const visibleCode = useMemo(() => {
-    if (!experiment || experiment.steps.length === 0) return "";
-    const step = experiment.steps[currentStep];
-    if (!step) return "";
-    return step.context + step.selected_token;
-  }, [experiment, currentStep]);
-
-  const stats = useMemo(() => {
-    if (!experiment || experiment.steps.length === 0) return null;
-    const entropies = experiment.steps
-      .map((s) => s.entropy_before)
-      .filter((e): e is number => e !== null);
-    return {
-      avgEntropy: entropies.length
-        ? (entropies.reduce((a, b) => a + b, 0) / entropies.length).toFixed(3)
-        : "—",
-      maxEntropy: entropies.length ? Math.max(...entropies).toFixed(3) : "—",
-      avgTopProb: experiment.steps.length
-        ? formatPct(
-            experiment.steps.reduce((s, st) => s + (st.top_tokens[0]?.probability ?? 0), 0) /
-              experiment.steps.length,
-            1
-          )
-        : "—",
-    };
-  }, [experiment]);
 
   const sourceSelector = (
     <ExperimentSourceSelector
       value={source}
       onChange={(mode) => {
         setSource(mode);
-        if (mode === "live") {
-          // Keep live state; switching away from import does not reset generation.
-        } else {
-          setIsPlaying(false);
-        }
       }}
-      disabled={isLoading}
+      disabled={isBusy}
     />
   );
 
-  // ── IMPORTED MODE ───────────────────────────────────────────────────────
   if (source === "imported") {
     return (
       <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -168,223 +117,76 @@ function HomePageInner() {
     );
   }
 
-  // ── LIVE MODE (existing behaviour) ──────────────────────────────────────
-
-  if (hasError && !isLoading) {
+  if (isBusy) {
     return (
-      <div className="mx-auto flex max-w-2xl flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[#e6edf3]">Generate &amp; Visualize</h1>
-          <p className="mt-1 text-sm text-[#8b949e]">
-            Generation failed. The error below is from the backend — no placeholder output is shown.
+      <div className="flex flex-col items-center gap-6 py-32">
+        <Spinner
+          size="lg"
+          label={statusMessage || "Working on generation job…"}
+        />
+        <div className="max-w-md space-y-2 text-center text-xs text-[#484f58]">
+          <p>
+            Qwen2.5-Coder-1.5B-Instruct runs on CPU. First run may download
+            weights (~3 GB). Long runs (up to {DEFAULT_MAX_NEW_TOKENS} tokens)
+            can take several minutes.
           </p>
+          {jobId && (
+            <p className="font-mono text-[11px] text-[#8b949e]">
+              job {jobId}
+            </p>
+          )}
+          {phase === "status_unavailable" && (
+            <>
+              <p className="text-accent-red">{error}</p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => checkStatusAgain()}
+              >
+                Check status again
+              </Button>
+            </>
+          )}
         </div>
-        {sourceSelector}
-        <Card>
-          <PromptForm onSubmit={handleGenerate} isLoading={isLoading} error={error} />
-        </Card>
       </div>
     );
   }
 
-  if (!hasResult && !isLoading) {
-    return (
-      <div className="mx-auto flex max-w-2xl flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[#e6edf3]">Generate &amp; Visualize</h1>
-          <p className="mt-1 text-sm leading-relaxed text-[#8b949e]">
-            Qwen2.5-Coder generates Verilog token-by-token with full decoding traces.
-            Toggle Syncode Verilog-grammar masking to compare raw vs constrained distributions,
-            entropy shifts, and masked-token forensics at every step.
-          </p>
-        </div>
-        {sourceSelector}
-        <Card>
-          <PromptForm onSubmit={handleGenerate} isLoading={isLoading} error={error} />
-        </Card>
+  const showFailed = phase === "failed" && error;
+
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-bold text-[#e6edf3]">Generate &amp; Visualize</h1>
+        <p className="mt-1 text-sm leading-relaxed text-[#8b949e]">
+          {showFailed
+            ? "The generation job ended with an error. Details are shown below — no placeholder output is shown."
+            : "Qwen2.5-Coder generates Verilog token-by-token with full decoding traces. Toggle Syncode Verilog-grammar masking to compare raw vs constrained distributions. Generation runs as a background job; when it finishes you open the saved experiment detail page."}
+        </p>
+      </div>
+      {sourceSelector}
+      <Card>
+        <PromptForm onSubmit={handleGenerate} isLoading={isBusy} error={error} />
+      </Card>
+      {!showFailed && (
         <div className="grid grid-cols-2 gap-3 text-xs text-[#484f58] sm:grid-cols-4">
           {[
             ["Model", "Qwen2.5-Coder"],
             ["Runtime", "CPU · fp32"],
-            ["Decoding", "Nucleus + trace"],
+            ["Decoding", "Job + poll"],
             ["Syncode", "Verilog grammar"],
           ].map(([k, v]) => (
-            <div key={k} className="rounded-md border border-surface-border bg-surface-raised p-2">
+            <div
+              key={k}
+              className="rounded-md border border-surface-border bg-surface-raised p-2"
+            >
               <p className="text-[#484f58]">{k}</p>
               <p className="font-medium text-[#8b949e]">{v}</p>
             </div>
           ))}
         </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center gap-6 py-32">
-        <Spinner size="lg" label="Generating tokens…" />
-        <p className="max-w-sm text-center text-xs text-[#484f58]">
-          Qwen2.5-Coder-1.5B-Instruct is generating Verilog on CPU.
-          First run downloads weights (~3 GB); Syncode Verilog DFA build adds ~30 s once.
-          Long runs (up to {DEFAULT_MAX_NEW_TOKENS} tokens) may take several minutes — please wait; the UI will not
-          error until the backend finishes or the 10-minute limit is reached.
-        </p>
-        <Button variant="ghost" size="sm" onClick={reset}>
-          Cancel
-        </Button>
-      </div>
-    );
-  }
-
-  if (!experiment) return null;
-
-  const activeStep = experiment.steps[currentStep];
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-md border border-surface-border bg-surface-raised px-4 py-3">
-        {sourceSelector}
-      </div>
-
-      <div className="flex items-center gap-3 rounded-md border border-surface-border bg-surface-raised px-4 py-2">
-        <span className="text-xs text-[#484f58]">
-          <span className="text-accent-blue font-mono">
-            {experiment.experiment_id.slice(0, 8)}…
-          </span>
-          {" · "}
-          {experiment.model_name.split("/").pop()}
-          {" · "}
-          {experiment.total_steps} tokens
-        </span>
-        <Badge variant="neutral">{experiment.mode}</Badge>
-        {experiment.mode === "syncode" && (
-          <Badge variant="info">Verilog grammar</Badge>
-        )}
-        <button
-          type="button"
-          onClick={() => setShowForm((v) => !v)}
-          className="ml-auto text-xs text-[#8b949e] hover:text-accent-blue"
-        >
-          {showForm ? "▾ Hide form" : "▸ New prompt"}
-        </button>
-        <Button variant="secondary" size="sm" onClick={() => { reset(); setShowForm(true); }}>
-          Reset
-        </Button>
-      </div>
-
-      {showForm && (
-        <Card>
-          <PromptForm onSubmit={handleGenerate} isLoading={isLoading} error={error} />
-        </Card>
       )}
-
-      <SyncodeEvidencePanel experiment={experiment} />
-
-      {stats && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            { label: "Tokens", value: experiment.total_steps },
-            { label: "Avg entropy", value: stats.avgEntropy, title: "Mean H = -Σp·log(p)" },
-            { label: "Max entropy", value: stats.maxEntropy, title: "Most uncertain step" },
-            { label: "Avg top-1 p", value: stats.avgTopProb, title: "Mean top-1 probability" },
-          ].map(({ label, value, title }) => (
-            <div
-              key={label}
-              title={title}
-              className="rounded-md border border-surface-border bg-surface-raised px-2.5 py-1.5"
-            >
-              <p className="text-[10px] uppercase tracking-wider text-[#484f58]">{label}</p>
-              <p className="mt-0.5 font-mono text-base font-semibold text-[#e6edf3]">{value}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="grid gap-3 lg:grid-cols-12">
-        <section className="flex flex-col gap-1.5 lg:col-span-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
-              Generated Output
-            </h2>
-            {experiment.mode === "syncode" && experiment.final_parse_valid === false && (
-              <span className="rounded border border-[#f85149]/40 bg-[#f85149]/10 px-1.5 py-0.5 text-[10px] text-[#f85149]">
-                not grammar-valid
-              </span>
-            )}
-            {experiment.mode === "syncode" && experiment.final_parse_valid === true && (
-              <span className="rounded border border-[#3fb950]/40 bg-[#3fb950]/10 px-1.5 py-0.5 text-[10px] text-[#3fb950]">
-                grammar-valid
-              </span>
-            )}
-            <span className="ml-auto font-mono text-[10px] text-[#484f58]">
-              up to step {currentStep + 1}
-            </span>
-          </div>
-          {visibleCode ? (
-            <CodeViewer
-              code={visibleCode}
-              className="min-h-32 max-h-[42vh]"
-            />
-          ) : (
-            <div className="flex min-h-40 items-center justify-center rounded-md border border-accent-red/30 bg-red-900/10 px-4 text-sm text-accent-red">
-              No token data for step {currentStep + 1} — trace may be corrupt.
-            </div>
-          )}
-        </section>
-
-        <section className="flex flex-col gap-1.5 lg:col-span-8">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
-            Step Detail — SynCode Forensics
-          </h2>
-          {activeStep ? (
-            <div className="overflow-y-auto max-h-[42vh] rounded-md border border-surface-border bg-surface-raised p-3">
-              <StepViewer step={activeStep} mode={experiment.mode} />
-            </div>
-          ) : (
-            <div className="flex h-40 items-center justify-center rounded-md border border-surface-border text-sm text-[#484f58]">
-              No step selected
-            </div>
-          )}
-        </section>
-      </div>
-
-      <StepPlayer
-        totalSteps={experiment.total_steps}
-        currentStep={currentStep}
-        isPlaying={isPlaying}
-        onStepChange={setCurrentStep}
-        onPlayPause={() => setIsPlaying((v) => !v)}
-        playIntervalMs={playIntervalMs}
-        onIntervalChange={setPlayIntervalMs}
-      />
-
-      <TopMaskedTokensPanel step={activeStep} mode={experiment.mode} />
-
-      <StepAnalysisExportPanel
-        experiment={experiment}
-        step={activeStep}
-        stepIndex={currentStep}
-      />
-
-      <ParserTreeExportPanel experiment={experiment} />
-
-      <div className="rounded-md border border-surface-border bg-surface-raised px-3 py-2">
-        <EntropyChart
-          steps={experiment.steps}
-          activeStep={currentStep}
-          onStepClick={setCurrentStep}
-        />
-      </div>
-
-      <section className="flex flex-col gap-1.5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
-          Decoding Timeline — {experiment.total_steps} step{experiment.total_steps !== 1 ? "s" : ""}
-        </h2>
-        <DecodingTimeline
-          steps={experiment.steps}
-          onStepSelect={setCurrentStep}
-        />
-      </section>
     </div>
   );
 }

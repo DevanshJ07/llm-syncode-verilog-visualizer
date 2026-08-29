@@ -1,10 +1,13 @@
 /**
  * Long-running proxy for POST /generate.
  *
- * Next.js rewrite proxies default to a short timeout (~30–120 s).  CPU
- * generation with 120+ tokens routinely exceeds that, which surfaces as
- * "API 500: Internal Server Error" in the browser while the backend is still
- * running.  This route handler forwards to FastAPI with a 10-minute timeout.
+ * Next.js rewrite proxies default to a short timeout (~30–120 s). CPU
+ * generation with 120+ tokens routinely exceeds that. This route handler
+ * forwards to FastAPI with a 10-minute timeout.
+ *
+ * Backend returns a lightweight GenerateCreatedResponse (experiment id +
+ * metadata). The full decoding trace is loaded separately via
+ * GET /api/experiment/{id}.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -40,14 +43,32 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json" },
       body,
       signal: controller.signal,
+      cache: "no-store",
     });
 
     console.log("[proxy /api/generate] backend status:", res.status);
 
+    const contentType =
+      res.headers.get("Content-Type") ?? "application/json";
+
+    // Lightweight ack — stream when possible; body is small either way.
+    if (res.body) {
+      return new NextResponse(res.body, {
+        status: res.status,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     const text = await res.text();
     return new NextResponse(text, {
       status: res.status,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "no-store",
+      },
     });
   } catch (err) {
     const isAbort = err instanceof Error && err.name === "AbortError";

@@ -24,6 +24,7 @@ from app.api.routes import debug as debug_router
 from app.api.routes import imported_experiments as imported_experiments_router
 from app.core.config import settings
 from app.services.grammar_diagnostics import log_grammar_diagnostics, run_grammar_diagnostics
+from app.services.generation_jobs import generation_jobs
 from app.services.llm_service import llm_service
 
 
@@ -33,8 +34,13 @@ async def lifespan(app: FastAPI):
     diag = run_grammar_diagnostics(build_mask_store=False)
     log_grammar_diagnostics(diag)
 
-    print(f"[Startup] {settings.app_name} ready (model loads lazily on first request).")
+    await generation_jobs.start()
+    print(
+        f"[Startup] {settings.app_name} ready "
+        "(model loads lazily; live jobs via POST /generate/jobs)."
+    )
     yield
+    await generation_jobs.stop()
     print("[Shutdown] Cleaning up.")
 
 

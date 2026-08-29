@@ -359,13 +359,71 @@ class GenerateRequest(BaseModel):
     repetition_penalty: float = Field(default=1.1, ge=1.0, le=2.0)
 
 
+class GenerateCreatedResponse(BaseModel):
+    """
+    Lightweight POST /generate acknowledgement.
+
+    The full ExperimentResult (including every decoding step) is persisted
+    under logs/experiments/ and loaded via GET /experiment/{experiment_id}.
+    This response intentionally omits steps, generated text, parse trees,
+    and per-step masking evidence so the long-running browser request stays
+    small.
+    """
+
+    experiment_id: str
+    status: str = "completed"
+    message: str = ""
+    mode: str = "raw"  # "raw" | "syncode"
+    step_count: int = 0
+    early_termination: str = ""
+    final_parse_valid: bool = False
+    created_at: str = ""
+    detail_path: str = ""  # e.g. /experiment/{experiment_id}
+    model_name: str = ""
+    constraint_status: str = "off"
+    constraint_requested: bool = False
+    constraint_active_during_generation: bool = False
+
+
+class GenerateJobCreatedResponse(BaseModel):
+    """Immediate POST /generate/jobs acknowledgement (no model wait)."""
+
+    job_id: str
+    status: str = "queued"  # queued | running
+    created_at: str = ""
+    status_path: str = ""
+
+
+class GenerateJobStatusResponse(BaseModel):
+    """GET /generate/jobs/{job_id} status payload."""
+
+    job_id: str
+    status: str  # queued | running | completed | failed
+    created_at: str = ""
+    started_at: str | None = None
+    completed_at: str | None = None
+    message: str = ""
+    experiment_id: str | None = None
+    detail_path: str | None = None
+    step_count: int | None = None
+    early_termination: str | None = None
+    final_parse_valid: bool | None = None
+    mode: str | None = None
+    constraint_status: str | None = None
+    constraint_requested: bool | None = None
+    constraint_active_during_generation: bool | None = None
+    error: str | None = None
+    error_code: str | None = None
+
+
 class GenerateResponse(BaseModel):
     """
-    POST /generate response body.
+    Historical full inline generate payload (steps + metadata).
 
-    Returns the full experiment inline so the frontend can render the
-    visualization immediately without a follow-up GET /experiment/{id}.
-    The experiment is still persisted to disk under logs/experiments/.
+    POST /generate now returns GenerateCreatedResponse. This model remains for
+    schema/backward-compat tests and any tooling that still constructs the
+    former full response shape. Live clients must use GET /experiment/{id}
+    for the complete ExperimentResult.
     """
     # --- Experiment identity ---
     experiment_id: str

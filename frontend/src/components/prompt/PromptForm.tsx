@@ -11,7 +11,7 @@
  * top_tokens_before_syncode / masked_tokens / valid_tokens_after_syncode.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { GenerationSettings } from "@/components/prompt/GenerationSettings";
 import { DEFAULT_MAX_NEW_TOKENS } from "@/lib/generationDefaults";
@@ -96,9 +96,18 @@ export function PromptForm({ onSubmit, isLoading, error }: Props) {
     max_new_tokens: DEFAULT_MAX_NEW_TOKENS,
     temperature: 1.0,
   });
+  const inFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLoading) {
+      inFlightRef.current = false;
+    }
+  }, [isLoading]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading || inFlightRef.current) return;
+    inFlightRef.current = true;
     onSubmit({ prompt, use_syncode: useSyncode, ...settings });
   };
 

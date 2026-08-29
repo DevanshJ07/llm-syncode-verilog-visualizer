@@ -11,6 +11,9 @@ const nextConfig = {
    *
    * Dedicated App Router handlers (take precedence over rewrites):
    *   - src/app/api/generate/route.ts
+   *   - src/app/api/generate/jobs/route.ts
+   *   - src/app/api/generate/jobs/[jobId]/route.ts
+   *   - src/app/api/experiment/[id]/route.ts
    *   - src/app/api/import/bundle/route.ts
    *   - src/app/api/imported-experiment/[id]/route.ts
    *

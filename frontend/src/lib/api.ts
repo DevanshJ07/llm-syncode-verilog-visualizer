@@ -1,14 +1,22 @@
 /**
  * API client layer.
  *
- * All calls go through the Next.js rewrite proxy (/api → FastAPI).
+ * Dedicated App Router handlers (not the generic rewrite):
+ *   - POST /api/generate/jobs
+ *   - GET  /api/generate/jobs/[jobId]
+ *   - POST /api/generate (sync compat)
+ *   - GET  /api/experiment/[id]
+ *   - POST /api/import/bundle
+ *   - GET  /api/imported-experiment/[id]
+ *
  * Components and hooks should import from here, never fetch() directly.
  */
-
 import type {
   ExperimentResult,
+  GenerateCreatedResponse,
+  GenerateJobCreatedResponse,
+  GenerateJobStatusResponse,
   GenerateRequest,
-  GenerateResponse,
   StepResponse,
 } from "@/types/decoding";
 import type {
@@ -16,23 +24,24 @@ import type {
   ImportedExperimentSummary,
   NormalizedExperiment,
 } from "@/types/normalized";
-
 const BASE = "/api";
 const DEBUG_API = process.env.NODE_ENV === "development";
-
-/** Generation can run many minutes on CPU — do not abort early. */
+/** Sync POST /generate compat path — long CPU runs. */
 const GENERATE_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
-
+/** Job create must return promptly. */
+const GENERATE_JOB_CREATE_TIMEOUT_MS = 60 * 1000;
+/** Single status poll. */
+const GENERATE_JOB_STATUS_TIMEOUT_MS = 60 * 1000;
 /**
  * Import + optional SynCode parser-evidence recomputation can take several
  * minutes (measured ~3–4+ min for 4×512-step bundles). Separate from ordinary
  * GET timeouts. Matches the dedicated /api/import/bundle route proxy.
  */
 const IMPORT_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
-
 /** Large imported detail payloads (SynCode evidence) may take longer to load. */
 const IMPORT_DETAIL_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
-
+/** Live experiment detail (full decoding trace) via dedicated proxy. */
+const EXPERIMENT_DETAIL_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
 /** Parse FastAPI error bodies into a human-readable string. */
 export function formatApiError(status: number, body: string): string {
   try {
@@ -77,7 +86,6 @@ export function formatApiError(status: number, body: string): string {
   }
   return `API ${status}: ${body.slice(0, 500)}`;
 }
-
 async function request<T>(
   path: string,
   init?: RequestInit,
@@ -86,7 +94,6 @@ async function request<T>(
   if (DEBUG_API) {
     console.debug("[API request]", init?.method ?? "GET", path);
   }
-
   const timeoutMs = options?.timeoutMs;
   const useJson = options?.json !== false;
   const controller = timeoutMs ? new AbortController() : undefined;
@@ -94,12 +101,19 @@ async function request<T>(
     timeoutMs && controller
       ? setTimeout(() => controller.abort(), timeoutMs)
       : undefined;
-
+  if (controller && init?.signal) {
+    if (init.signal.aborted) {
+      controller.abort();
+    } else {
+      init.signal.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      });
+    }
+  }
   const headers = new Headers(init?.headers);
   if (useJson && !headers.has("Content-Type") && init?.body) {
     headers.set("Content-Type", "application/json");
   }
-
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
@@ -112,14 +126,52 @@ async function request<T>(
     if (err instanceof Error && err.name === "AbortError") {
       const isImport =
         path.startsWith("/import/") || path.startsWith("/imported-experiment/");
+      const isJobCreate = path === "/generate/jobs";
+      const isJobStatus = path.startsWith("/generate/jobs/");
+      const isGenerate = path === "/generate" || path.startsWith("/generate?");
+      if (isImport) {
+        throw new Error(
+          "Import request timed out after 10 minutes. The backend may still be finishing — refresh the imported list before retrying to avoid duplicates."
+        );
+      }
+      if (isJobCreate) {
+        throw new Error(
+          "Timed out while creating the generation job. Check the backend terminal before submitting again."
+        );
+      }
+      if (isJobStatus) {
+        throw new Error(
+          "Timed out while checking generation job status."
+        );
+      }
+      if (isGenerate) {
+        throw new Error(
+          "Request timed out after 10 minutes — generation may still be running on the backend. Wait and check the backend terminal before submitting again, or reduce max_new_tokens."
+        );
+      }
       throw new Error(
-        isImport
-          ? "Import request timed out after 10 minutes. The backend may still be finishing — refresh the imported list before retrying to avoid duplicates."
-          : "Request timed out — generation may still be running on the backend. " +
-              "Wait and refresh, or reduce max_new_tokens."
+        "Request timed out — the backend may still be finishing. Wait and refresh before retrying."
       );
     }
     if (err instanceof TypeError) {
+      const isJobCreate = path === "/generate/jobs";
+      const isJobStatus = path.startsWith("/generate/jobs/");
+      const isGenerate = path === "/generate" || path.startsWith("/generate?");
+      if (isJobCreate) {
+        throw new Error(
+          "The generation job could not be created because the connection was lost. Check the backend terminal before submitting again."
+        );
+      }
+      if (isJobStatus) {
+        throw new Error(
+          `Network or proxy failure while calling ${path}: ${err.message || String(err)}`
+        );
+      }
+      if (isGenerate) {
+        throw new Error(
+          "The connection to the generation request was lost. The backend may still be running and may save the experiment. Check the backend terminal before submitting again."
+        );
+      }
       throw new Error(
         `Network or proxy failure while calling ${path}: ${err.message || String(err)}`
       );
@@ -128,9 +180,7 @@ async function request<T>(
   } finally {
     if (timer) clearTimeout(timer);
   }
-
   const bodyText = await res.text();
-
   if (DEBUG_API) {
     console.debug(
       "[API response]",
@@ -141,13 +191,11 @@ async function request<T>(
       bodyText.length
     );
   }
-
   if (!res.ok) {
     const message = formatApiError(res.status, bodyText);
     console.error("[API error]", path, message);
     throw new Error(message);
   }
-
   try {
     const data = JSON.parse(bodyText) as T;
     if (DEBUG_API && path === "/generate") {
@@ -165,39 +213,79 @@ async function request<T>(
     );
   }
 }
-
-/** Validate a successful /generate response — throws if trace is empty. */
-export function assertValidGenerateResponse(response: GenerateResponse): void {
+/** Validate a successful lightweight /generate acknowledgement. */
+export function assertValidGenerateCreatedResponse(
+  response: GenerateCreatedResponse
+): void {
   const issues: string[] = [];
-  if (!response.steps || response.steps.length === 0) {
-    issues.push("response.steps is empty");
-  }
-  if (response.total_steps <= 0) {
-    issues.push(`response.total_steps=${response.total_steps}`);
-  }
-  if (!response.generated_text || !response.generated_text.trim()) {
-    issues.push("response.generated_text is empty");
+  if (!response.experiment_id || !String(response.experiment_id).trim()) {
+    issues.push("response.experiment_id is empty");
   }
   if (response.status === "error") {
-    issues.push(
-      `response.status=error: ${response.message || "no message"}`
-    );
+    issues.push(`response.status=error: ${response.message || "no message"}`);
+  }
+  if (typeof response.step_count === "number" && response.step_count < 0) {
+    issues.push(`response.step_count=${response.step_count}`);
   }
   if (issues.length > 0) {
     throw new Error(
       `Invalid generate response (${issues.join("; ")}). ` +
-        `experiment_id=${response.experiment_id}`
+        `experiment_id=${response.experiment_id ?? "(missing)"}`
     );
   }
 }
+// ---------------------------------------------------------------------------
+// Generation (async jobs — browser live path)
+// ---------------------------------------------------------------------------
+
+export function assertValidGenerateJobCreated(
+  response: GenerateJobCreatedResponse
+): void {
+  if (!response.job_id || !String(response.job_id).trim()) {
+    throw new Error("Invalid generate job response (job_id is empty).");
+  }
+}
+
+export async function postGenerateJob(
+  payload: GenerateRequest
+): Promise<GenerateJobCreatedResponse> {
+  if (DEBUG_API) {
+    console.debug("[API postGenerateJob] request", {
+      prompt_len: payload.prompt.length,
+      use_syncode: payload.use_syncode,
+      max_new_tokens: payload.max_new_tokens,
+    });
+  }
+  const response = await request<GenerateJobCreatedResponse>(
+    "/generate/jobs",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    { timeoutMs: GENERATE_JOB_CREATE_TIMEOUT_MS }
+  );
+  assertValidGenerateJobCreated(response);
+  return response;
+}
+
+export async function getGenerateJobStatus(
+  jobId: string,
+  init?: RequestInit
+): Promise<GenerateJobStatusResponse> {
+  return request<GenerateJobStatusResponse>(
+    `/generate/jobs/${encodeURIComponent(jobId)}`,
+    init,
+    { timeoutMs: GENERATE_JOB_STATUS_TIMEOUT_MS }
+  );
+}
 
 // ---------------------------------------------------------------------------
-// Generation
+// Generation (sync compat — tests / internal)
 // ---------------------------------------------------------------------------
 
 export async function postGenerate(
   payload: GenerateRequest
-): Promise<GenerateResponse> {
+): Promise<GenerateCreatedResponse> {
   if (DEBUG_API) {
     console.debug("[API postGenerate] request", {
       prompt_len: payload.prompt.length,
@@ -205,7 +293,7 @@ export async function postGenerate(
       max_new_tokens: payload.max_new_tokens,
     });
   }
-  const response = await request<GenerateResponse>(
+  const response = await request<GenerateCreatedResponse>(
     "/generate",
     {
       method: "POST",
@@ -213,40 +301,37 @@ export async function postGenerate(
     },
     { timeoutMs: GENERATE_CLIENT_TIMEOUT_MS }
   );
-  assertValidGenerateResponse(response);
+  assertValidGenerateCreatedResponse(response);
   if (DEBUG_API) {
     console.debug("[API postGenerate] validated", {
       experiment_id: response.experiment_id,
-      total_steps: response.total_steps,
-      generated_text_len: response.generated_text.length,
+      step_count: response.step_count,
+      mode: response.mode,
+      detail_path: response.detail_path,
     });
   }
   return response;
 }
-
 // ---------------------------------------------------------------------------
 // Experiments (live)
 // ---------------------------------------------------------------------------
-
 export async function getExperiment(id: string): Promise<ExperimentResult> {
-  return request<ExperimentResult>(`/experiment/${id}`);
+  return request<ExperimentResult>(`/experiment/${id}`, undefined, {
+    timeoutMs: EXPERIMENT_DETAIL_CLIENT_TIMEOUT_MS,
+  });
 }
-
 export async function getExperimentStep(
   id: string,
   step: number
 ): Promise<StepResponse> {
   return request<StepResponse>(`/experiment/${id}/steps/${step}`);
 }
-
 export async function listExperiments(): Promise<string[]> {
   return request<string[]>("/experiments");
 }
-
 // ---------------------------------------------------------------------------
 // Imported experiments (Phase 2A.2 / 2B.1)
 // ---------------------------------------------------------------------------
-
 /**
  * POST /import/bundle — multipart ZIP upload.
  * Do not set Content-Type manually (browser must supply the boundary).
@@ -274,7 +359,6 @@ export async function postImportBundle(
     typeof options === "boolean"
       ? false
       : Boolean(options.recomputeSyncodeParserEvidence);
-
   const form = new FormData();
   form.append("file", file);
   form.append(
@@ -294,13 +378,11 @@ export async function postImportBundle(
     { timeoutMs: IMPORT_CLIENT_TIMEOUT_MS, json: false }
   );
 }
-
 export async function listImportedExperiments(): Promise<
   ImportedExperimentSummary[]
 > {
   return request<ImportedExperimentSummary[]>("/imported-experiments");
 }
-
 export async function getImportedExperiment(
   id: string
 ): Promise<NormalizedExperiment> {
@@ -308,11 +390,9 @@ export async function getImportedExperiment(
     timeoutMs: IMPORT_DETAIL_CLIENT_TIMEOUT_MS,
   });
 }
-
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
-
 export async function getHealth(): Promise<{ status: string }> {
   return request<{ status: string }>("/health");
 }
