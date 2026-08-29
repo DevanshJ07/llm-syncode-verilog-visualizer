@@ -33,6 +33,11 @@ interface Props {
   className?: string;
   /** Optional heading override. */
   title?: string;
+  /**
+   * When true, source-boundary and pretty-text diagnostics start collapsed,
+   * and the node tree sits in a bounded scroll region (Phase 5A.1 workspace).
+   */
+  compactDiagnostics?: boolean;
 }
 
 function MetaRow({ label, value }: { label: string; value: string }) {
@@ -96,6 +101,7 @@ export function ParserAnalysisViewer({
   context = "live",
   className,
   title = "Structured parser analysis",
+  compactDiagnostics = false,
 }: Props) {
   if (isParserAnalysisUnavailable(analysis)) {
     return (
@@ -227,7 +233,7 @@ export function ParserAnalysisViewer({
       </div>
 
       {/* Node viewer */}
-      <div className="flex flex-col gap-1.5">
+      <div className="flex min-h-0 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#484f58]">
             Structured nodes
@@ -238,7 +244,14 @@ export function ParserAnalysisViewer({
           </span>
         </div>
         {a.root ? (
-          <ParserNodeTree root={a.root} />
+          <div
+            className={cn(
+              compactDiagnostics &&
+                "max-h-[min(40vh,28rem)] overflow-auto rounded border border-surface-border bg-surface p-2"
+            )}
+          >
+            <ParserNodeTree root={a.root} />
+          </div>
         ) : (
           <p className="text-xs text-[#8b949e]">
             Root node absent.
@@ -247,109 +260,134 @@ export function ParserAnalysisViewer({
               : " No structured forest was returned."}
           </p>
         )}
-        {a.pretty_text && (
-          <details className="rounded border border-surface-border bg-surface">
-            <summary className="cursor-pointer px-2 py-1.5 text-[10px] uppercase tracking-wider text-[#484f58]">
-              Pretty-text representation
-            </summary>
-            <pre className="max-h-48 overflow-auto whitespace-pre border-t border-surface-border p-2 font-mono text-[11px] text-[#c9d1d9]">
-              {a.pretty_text}
-            </pre>
-          </details>
-        )}
+        {a.pretty_text &&
+          (compactDiagnostics ? (
+            <details className="rounded border border-surface-border bg-surface">
+              <summary className="cursor-pointer px-2 py-1.5 text-[10px] uppercase tracking-wider text-[#484f58]">
+                Pretty-text representation
+              </summary>
+              <pre className="max-h-48 overflow-auto whitespace-pre border-t border-surface-border p-2 font-mono text-[11px] text-[#c9d1d9]">
+                {a.pretty_text}
+              </pre>
+            </details>
+          ) : (
+            <details className="rounded border border-surface-border bg-surface">
+              <summary className="cursor-pointer px-2 py-1.5 text-[10px] uppercase tracking-wider text-[#484f58]">
+                Pretty-text representation
+              </summary>
+              <pre className="max-h-48 overflow-auto whitespace-pre border-t border-surface-border p-2 font-mono text-[11px] text-[#c9d1d9]">
+                {a.pretty_text}
+              </pre>
+            </details>
+          ))}
       </div>
 
       {/* Source boundary */}
-      <div className="flex flex-col gap-2">
-        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#484f58]">
-          Source boundary
-        </h3>
+      <SourceBoundarySection
+        analysis={a}
+        compactDiagnostics={compactDiagnostics}
+      />
+    </section>
+  );
+}
 
-        {a.status === "complete_valid" && (
+function SourceBoundarySection({
+  analysis: a,
+  compactDiagnostics,
+}: {
+  analysis: NonNullable<ParserAnalysis>;
+  compactDiagnostics: boolean;
+}) {
+  const body = (
+    <div
+      className={cn(
+        "flex flex-col gap-2",
+        compactDiagnostics && "border-t border-surface-border p-2"
+      )}
+    >
+      {a.status === "complete_valid" && (
+        <SourceBlock
+          label="Analyzed source (complete)"
+          text={a.parsed_prefix || "(empty)"}
+          tone="neutral"
+        />
+      )}
+
+      {a.status === "incomplete_prefix" && (
+        <>
           <SourceBlock
-            label="Analyzed source (complete)"
-            text={a.parsed_prefix || "(empty)"}
-            tone="neutral"
+            label="Consumed prefix (entire analyzed source)"
+            text={a.parsed_prefix}
+            tone="prefix"
           />
-        )}
+          <p className="text-xs text-[#8b949e]">
+            Invalid suffix is empty — failure is end-of-input before completion,
+            not a rejected mid-stream token.
+          </p>
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wider text-[#484f58]">
+              Expected next terminals (Lark / parser-derived)
+            </p>
+            <TerminalsList terminals={a.expected_next_terminals} />
+          </div>
+        </>
+      )}
 
-        {a.status === "incomplete_prefix" && (
-          <>
+      {a.status === "invalid_input" && (
+        <>
+          <div className="grid gap-2 lg:grid-cols-2">
             <SourceBlock
-              label="Consumed prefix (entire analyzed source)"
+              label="Parsed / recovered prefix"
               text={a.parsed_prefix}
               tone="prefix"
             />
-            <p className="text-xs text-[#8b949e]">
-              Invalid suffix is empty — failure is end-of-input before completion,
-              not a rejected mid-stream token.
+            <SourceBlock
+              label="Invalid suffix"
+              text={a.invalid_suffix}
+              tone="suffix"
+            />
+          </div>
+          <p className="font-mono text-[10px] text-[#484f58]">
+            boundary: consumed_char_offset={a.consumed_char_offset}
+            {a.error_offset != null ? ` · error_offset=${a.error_offset}` : ""}
+            {a.error_line != null ? ` · line=${a.error_line}` : ""}
+            {a.error_column != null ? ` · column=${a.error_column}` : ""}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <MetaRow
+              label="Unexpected token / character"
+              value={
+                a.unexpected_token_or_char.length > 0
+                  ? escapeTokenForDisplay(a.unexpected_token_or_char)
+                  : "Unavailable"
+              }
+            />
+            <MetaRow
+              label="Previous token"
+              value={
+                a.previous_token.length > 0
+                  ? escapeTokenForDisplay(a.previous_token)
+                  : "Unavailable"
+              }
+            />
+            <MetaRow
+              label="Error"
+              value={
+                a.error_type
+                  ? `${a.error_type}${a.error_message ? `: ${a.error_message}` : ""}`
+                  : "Unavailable"
+              }
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wider text-[#484f58]">
+              Expected terminals (Lark / parser-derived)
             </p>
-            <div>
-              <p className="mb-1 text-[10px] uppercase tracking-wider text-[#484f58]">
-                Expected next terminals (Lark / parser-derived)
-              </p>
-              <TerminalsList terminals={a.expected_next_terminals} />
-            </div>
-          </>
-        )}
+            <TerminalsList terminals={a.expected_next_terminals} />
+          </div>
+        </>
+      )}
 
-        {a.status === "invalid_input" && (
-          <>
-            <div className="grid gap-2 lg:grid-cols-2">
-              <SourceBlock
-                label="Parsed / recovered prefix"
-                text={a.parsed_prefix}
-                tone="prefix"
-              />
-              <SourceBlock
-                label="Invalid suffix"
-                text={a.invalid_suffix}
-                tone="suffix"
-              />
-            </div>
-            <p className="font-mono text-[10px] text-[#484f58]">
-              boundary: consumed_char_offset={a.consumed_char_offset}
-              {a.error_offset != null ? ` · error_offset=${a.error_offset}` : ""}
-              {a.error_line != null ? ` · line=${a.error_line}` : ""}
-              {a.error_column != null ? ` · column=${a.error_column}` : ""}
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              <MetaRow
-                label="Unexpected token / character"
-                value={
-                  a.unexpected_token_or_char.length > 0
-                    ? escapeTokenForDisplay(a.unexpected_token_or_char)
-                    : "Unavailable"
-                }
-              />
-              <MetaRow
-                label="Previous token"
-                value={
-                  a.previous_token.length > 0
-                    ? escapeTokenForDisplay(a.previous_token)
-                    : "Unavailable"
-                }
-              />
-              <MetaRow
-                label="Error"
-                value={
-                  a.error_type
-                    ? `${a.error_type}${a.error_message ? `: ${a.error_message}` : ""}`
-                    : "Unavailable"
-                }
-              />
-            </div>
-            <div>
-              <p className="mb-1 text-[10px] uppercase tracking-wider text-[#484f58]">
-                Expected terminals (Lark / parser-derived)
-              </p>
-              <TerminalsList terminals={a.expected_next_terminals} />
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* EOF / expected */}
       <div className="grid gap-2 sm:grid-cols-2">
         <div>
           <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
@@ -373,6 +411,26 @@ export function ParserAnalysisViewer({
         Lark expected terminals are not SynCode accept sequences.{" "}
         {a.comment_handling}
       </p>
-    </section>
+    </div>
+  );
+
+  if (compactDiagnostics) {
+    return (
+      <details className="rounded border border-surface-border bg-surface">
+        <summary className="cursor-pointer px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#484f58]">
+          Source boundary &amp; diagnostics
+        </summary>
+        {body}
+      </details>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#484f58]">
+        Source boundary
+      </h3>
+      {body}
+    </div>
   );
 }
