@@ -31,6 +31,10 @@ interface Props {
   step: DecodingStep;
   /** Pass experiment.mode so Syncode panels show even when step arrays are empty (e.g. fallback). */
   mode?: string;
+  /** Hide SynCode evidence panel when the parent renders it separately. */
+  hideSyncodeEvidence?: boolean;
+  /** Override SynCode panel heading when shown. */
+  syncodeEvidenceHeading?: string;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -326,7 +330,12 @@ function SyncodeMetricsCard({ step }: { step: DecodingStep }) {
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export function StepViewer({ step, mode }: Props) {
+export function StepViewer({
+  step,
+  mode,
+  hideSyncodeEvidence = false,
+  syncodeEvidenceHeading = "SynCode incremental parser",
+}: Props) {
   // Show syncode panels when:
   //  • the experiment was run in syncode mode (mode prop), OR
   //  • the step itself has syncode data (e.g. loaded from an old experiment)
@@ -563,23 +572,25 @@ export function StepViewer({ step, mode }: Props) {
               </section>
 
               {/* ── Layer 2: SynCode incremental parser ─────────────────── */}
-              <section className="flex flex-col gap-1.5">
-                <SyncodeParserEvidencePanel
-                  evidence={step.syncode_parser_evidence}
-                  provenanceKind={
-                    isStructurallyAvailable(step.syncode_parser_evidence)
-                      ? "recorded"
-                      : undefined
-                  }
-                  context="live"
-                  heading="SynCode incremental parser"
-                  legacyAcceptSequences={
-                    isStructurallyAvailable(step.syncode_parser_evidence)
-                      ? undefined
-                      : step.accept_sequences ?? []
-                  }
-                />
-              </section>
+              {!hideSyncodeEvidence && (
+                <section className="flex flex-col gap-1.5">
+                  <SyncodeParserEvidencePanel
+                    evidence={step.syncode_parser_evidence}
+                    provenanceKind={
+                      isStructurallyAvailable(step.syncode_parser_evidence)
+                        ? "recorded"
+                        : undefined
+                    }
+                    context="live"
+                    heading={syncodeEvidenceHeading}
+                    legacyAcceptSequences={
+                      isStructurallyAvailable(step.syncode_parser_evidence)
+                        ? undefined
+                        : step.accept_sequences ?? []
+                    }
+                  />
+                </section>
+              )}
 
               {/* ── Layer 1: Lark incremental parser ────────────────────── */}
               <section className="flex flex-col gap-1.5">
@@ -621,30 +632,31 @@ export function StepViewer({ step, mode }: Props) {
                   Tokenizer-mask evidence unavailable for this step.
                 </p>
               </section>
-              {isStructurallyAvailable(step.syncode_parser_evidence) ||
-              (step.accept_sequences?.length ?? 0) > 0 ? (
-                <SyncodeParserEvidencePanel
-                  evidence={step.syncode_parser_evidence}
-                  provenanceKind={
-                    isStructurallyAvailable(step.syncode_parser_evidence)
-                      ? "recorded"
-                      : undefined
-                  }
-                  context="live"
-                  heading="SynCode incremental parser"
-                  legacyAcceptSequences={
-                    isStructurallyAvailable(step.syncode_parser_evidence)
-                      ? undefined
-                      : step.accept_sequences ?? []
-                  }
-                />
-              ) : (
-                <SyncodeParserEvidencePanel
-                  evidence={step.syncode_parser_evidence}
-                  context="live"
-                  heading="SynCode incremental parser"
-                />
-              )}
+              {!hideSyncodeEvidence &&
+                (isStructurallyAvailable(step.syncode_parser_evidence) ||
+                (step.accept_sequences?.length ?? 0) > 0 ? (
+                  <SyncodeParserEvidencePanel
+                    evidence={step.syncode_parser_evidence}
+                    provenanceKind={
+                      isStructurallyAvailable(step.syncode_parser_evidence)
+                        ? "recorded"
+                        : undefined
+                    }
+                    context="live"
+                    heading={syncodeEvidenceHeading}
+                    legacyAcceptSequences={
+                      isStructurallyAvailable(step.syncode_parser_evidence)
+                        ? undefined
+                        : step.accept_sequences ?? []
+                    }
+                  />
+                ) : (
+                  <SyncodeParserEvidencePanel
+                    evidence={step.syncode_parser_evidence}
+                    context="live"
+                    heading={syncodeEvidenceHeading}
+                  />
+                ))}
               <IncrementalParserStatePanel step={step} />
             </>
           )}
@@ -673,24 +685,25 @@ export function StepViewer({ step, mode }: Props) {
             selectedId={selectedId}
           />
 
-          {(isStructurallyAvailable(step.syncode_parser_evidence) ||
-            (step.accept_sequences?.length ?? 0) > 0) && (
-            <SyncodeParserEvidencePanel
-              evidence={step.syncode_parser_evidence}
-              provenanceKind={
-                isStructurallyAvailable(step.syncode_parser_evidence)
-                  ? "recorded"
-                  : undefined
-              }
-              context="live"
-              heading="SynCode incremental parser"
-              legacyAcceptSequences={
-                isStructurallyAvailable(step.syncode_parser_evidence)
-                  ? undefined
-                  : step.accept_sequences ?? []
-              }
-            />
-          )}
+          {!hideSyncodeEvidence &&
+            (isStructurallyAvailable(step.syncode_parser_evidence) ||
+              (step.accept_sequences?.length ?? 0) > 0) && (
+              <SyncodeParserEvidencePanel
+                evidence={step.syncode_parser_evidence}
+                provenanceKind={
+                  isStructurallyAvailable(step.syncode_parser_evidence)
+                    ? "recorded"
+                    : undefined
+                }
+                context="live"
+                heading={syncodeEvidenceHeading}
+                legacyAcceptSequences={
+                  isStructurallyAvailable(step.syncode_parser_evidence)
+                    ? undefined
+                    : step.accept_sequences ?? []
+                }
+              />
+            )}
 
           <IncrementalParserStatePanel step={step} />
         </>
