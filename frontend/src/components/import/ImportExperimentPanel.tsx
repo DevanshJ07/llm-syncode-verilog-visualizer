@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/Button";
@@ -21,6 +21,7 @@ export function ImportExperimentPanel({ onImported }: ImportExperimentPanelProps
   const fileInputId = useId();
   const recomputeGrammarId = useId();
   const recomputeParserId = useId();
+  const inFlightRef = useRef(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [recomputeGrammar, setRecomputeGrammar] = useState(false);
@@ -46,7 +47,8 @@ export function ImportExperimentPanel({ onImported }: ImportExperimentPanelProps
   }
 
   async function handleImport() {
-    if (!file || loading) return;
+    if (!file || loading || inFlightRef.current) return;
+    inFlightRef.current = true;
     setLoading(true);
     setError(null);
     setSuccessId(null);
@@ -64,9 +66,16 @@ export function ImportExperimentPanel({ onImported }: ImportExperimentPanelProps
       // Never render as HTML — plain text only.
       setError(message);
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
   }
+
+  const waitingHint = recomputeParserEvidence
+    ? "Importing and recomputing parser evidence. This may take several minutes."
+    : recomputeGrammar
+      ? "Importing and recomputing grammar verdict…"
+      : "Uploading and normalizing…";
 
   return (
     <div className="flex flex-col gap-4">
@@ -153,7 +162,9 @@ export function ImportExperimentPanel({ onImported }: ImportExperimentPanelProps
           Import
         </Button>
         {loading && (
-          <span className="text-xs text-[#8b949e]">Uploading and normalizing…</span>
+          <span className="text-xs text-[#8b949e]" role="status" aria-live="polite">
+            {waitingHint}
+          </span>
         )}
       </div>
 

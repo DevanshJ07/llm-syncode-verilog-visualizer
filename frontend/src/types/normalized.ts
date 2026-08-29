@@ -113,3 +113,17 @@ export interface ImportedExperimentSummary {
   has_generated_outputs: boolean;
   model_name: string | null;
 }
+
+/**
+ * Lightweight POST /import/bundle 201 body — no per-step traces.
+ * Full detail remains on GET /imported-experiment/{id}.
+ */
+export interface ImportedExperimentCreatedResponse {
+  experiment_id: string;
+  experiment_name: string;
+  created_at: string;
+  prompt_count: number;
+  import_warnings: string[];
+  recompute_with_current_grammar: boolean;
+  recompute_syncode_parser_evidence: boolean;
+}

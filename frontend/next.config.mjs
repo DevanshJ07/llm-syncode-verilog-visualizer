@@ -3,9 +3,18 @@ const nextConfig = {
   reactStrictMode: true,
 
   /**
-   * Proxy all /api/* requests to the FastAPI backend during development.
-   * POST /api/generate is handled by src/app/api/generate/route.ts with a
-   * long timeout — do not rely on the rewrite alone for generation.
+   * Proxy /api/* to FastAPI during development.
+   *
+   * Long-running or large-body paths must NOT rely on rewrites alone:
+   * Next's rewrite proxy defaults to ~30s and returns HTTP 500 on timeout
+   * while the backend may still complete successfully.
+   *
+   * Dedicated App Router handlers (take precedence over rewrites):
+   *   - src/app/api/generate/route.ts
+   *   - src/app/api/import/bundle/route.ts
+   *   - src/app/api/imported-experiment/[id]/route.ts
+   *
+   * BACKEND_URL is environment-configured (default http://127.0.0.1:8000).
    */
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";

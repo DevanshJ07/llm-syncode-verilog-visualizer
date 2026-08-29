@@ -262,3 +262,21 @@ class ImportedExperimentSummary(BaseModel):
     import_warning_count: int = 0
     has_generated_outputs: bool = False
     model_name: Optional[str] = None
+
+
+class ImportedExperimentCreatedResponse(BaseModel):
+    """
+    Lightweight POST /import/bundle response.
+
+    Omits per-step traces so long SynCode recomputation does not force a
+    multi-megabyte JSON body through the Next.js rewrite proxy.
+    Full detail remains available via GET /imported-experiment/{id}.
+    """
+
+    experiment_id: str
+    experiment_name: str = ""
+    created_at: str = ""
+    prompt_count: int = 0
+    import_warnings: list[str] = Field(default_factory=list)
+    recompute_with_current_grammar: bool = False
+    recompute_syncode_parser_evidence: bool = False

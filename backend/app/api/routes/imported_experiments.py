@@ -14,7 +14,11 @@ import logging
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from app.core.config import settings
-from app.models.normalized import ImportedExperimentSummary, NormalizedExperiment
+from app.models.normalized import (
+    ImportedExperimentCreatedResponse,
+    ImportedExperimentSummary,
+    NormalizedExperiment,
+)
 from app.services.import_normalize import (
     ImportNormalizationError,
     is_safe_experiment_id,
@@ -24,6 +28,7 @@ from app.services.import_zip import ZipInspectionError
 from app.services.imported_experiment_store import (
     ImportedStoreError,
     imported_store,
+    to_imported_created_response,
 )
 
 log = logging.getLogger(__name__)
@@ -74,16 +79,19 @@ async def _read_upload_limited(upload: UploadFile, *, max_bytes: int) -> bytes:
 
 @router.post(
     "/import/bundle",
-    response_model=NormalizedExperiment,
+    response_model=ImportedExperimentCreatedResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def import_bundle(
     file: UploadFile = File(..., description="Experiment result ZIP"),
     recompute_with_current_grammar: bool = Form(False),
     recompute_syncode_parser_evidence: bool = Form(False),
-) -> NormalizedExperiment:
+) -> ImportedExperimentCreatedResponse:
     """
     Inspect, normalize, and persist an uploaded experiment ZIP.
+
+    Returns a lightweight created response (no per-step traces).  Fetch the
+    full normalized experiment via GET /imported-experiment/{experiment_id}.
 
     ``recompute_with_current_grammar`` defaults to false (Lark / parser analysis).
     ``recompute_syncode_parser_evidence`` defaults to false (parser-only SynCode;
@@ -162,8 +170,7 @@ async def import_bundle(
             detail=_client_safe_detail(str(exc)),
         ) from None
 
-    return experiment
-
+    return to_imported_created_response(experiment)
 
 @router.get(
     "/imported-experiments",

@@ -99,18 +99,30 @@ def test_import_list_detail_flow(client):
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["source_type"] == "imported"
+    # Lightweight created response — no full prompt_results/steps payload.
+    assert "prompt_results" not in body
+    assert "steps" not in body
     assert body["experiment_name"] == "focused_four_qwen_512"
+    assert body["prompt_count"] >= 1
+    assert body["recompute_with_current_grammar"] is False
+    assert body["recompute_syncode_parser_evidence"] is False
     eid = body["experiment_id"]
     assert store.load(eid) is not None
 
     # Also available under /api
     r_api = http.post(
         "/api/import/bundle",
-        files={"file": ("bundle.zip", _minimal_zip(experiment="focused_four_nemotron_512"), "application/zip")},
+        files={
+            "file": (
+                "bundle.zip",
+                _minimal_zip(experiment="focused_four_nemotron_512"),
+                "application/zip",
+            )
+        },
         data={"recompute_with_current_grammar": "false"},
     )
     assert r_api.status_code == 201, r_api.text
+    assert "prompt_results" not in r_api.json()
 
     listing = http.get("/imported-experiments")
     assert listing.status_code == 200
@@ -125,9 +137,11 @@ def test_import_list_detail_flow(client):
     detail = http.get(f"/imported-experiment/{eid}")
     assert detail.status_code == 200
     full = detail.json()
+    assert full["source_type"] == "imported"
     assert full["experiment_id"] == eid
     assert "prompt_results" in full
     assert "steps" in full["prompt_results"][0]
+    assert len(full["prompt_results"][0]["steps"]) > 0
     assert full["prompt_results"][0]["generated_output"]["value"] == VALID_SV.decode()
 
     detail_api = http.get(f"/api/imported-experiment/{eid}")
@@ -221,21 +235,30 @@ def test_recompute_form_default_false(client):
         files={"file": ("bundle.zip", _minimal_zip(), "application/zip")},
     )
     assert r.status_code == 201, r.text
-    pr = r.json()["prompt_results"][0]
+    created = r.json()
+    assert created["recompute_with_current_grammar"] is False
+    detail = http.get(f"/imported-experiment/{created['experiment_id']}")
+    pr = detail.json()["prompt_results"][0]
     assert pr["recomputed_grammar_verdict"]["provenance"]["kind"] == "unavailable"
 
 
 def test_recompute_form_true(client):
-    http, _ = client
+    http, store = client
     r = http.post(
         "/import/bundle",
         files={"file": ("bundle.zip", _minimal_zip(), "application/zip")},
         data={"recompute_with_current_grammar": "true"},
     )
     assert r.status_code == 201, r.text
-    pr = r.json()["prompt_results"][0]
+    created = r.json()
+    assert created["recompute_with_current_grammar"] is True
+    assert "prompt_results" not in created
+    detail = http.get(f"/imported-experiment/{created['experiment_id']}")
+    assert detail.status_code == 200
+    pr = detail.json()["prompt_results"][0]
     assert pr["recomputed_grammar_verdict"]["provenance"]["kind"] == "recomputed"
     assert pr["recomputed_grammar_verdict"]["provenance"]["grammar_sha256"]
+    assert store.load(created["experiment_id"]) is not None
 
 
 def test_syncode_recompute_form_default_false(client):
@@ -246,8 +269,9 @@ def test_syncode_recompute_form_default_false(client):
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["runtime_metadata"]["value"]["recompute_syncode_parser_evidence"] is False
-    step0 = body["prompt_results"][0]["steps"][0]
+    assert body["recompute_syncode_parser_evidence"] is False
+    detail = http.get(f"/imported-experiment/{body['experiment_id']}")
+    step0 = detail.json()["prompt_results"][0]["steps"][0]
     assert step0["syncode_parser_evidence"]["provenance"]["kind"] == "unavailable"
 
 
@@ -263,8 +287,11 @@ def test_syncode_recompute_form_true_independent(client):
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["runtime_metadata"]["value"]["recompute_syncode_parser_evidence"] is True
-    pr = body["prompt_results"][0]
+    assert body["recompute_syncode_parser_evidence"] is True
+    assert body["recompute_with_current_grammar"] is False
+    assert "prompt_results" not in body
+    detail = http.get(f"/imported-experiment/{body['experiment_id']}")
+    pr = detail.json()["prompt_results"][0]
     assert pr["recomputed_grammar_verdict"]["provenance"]["kind"] == "unavailable"
     step0 = pr["steps"][0]
     assert step0["syncode_parser_evidence"]["provenance"]["kind"] == "recomputed"
@@ -273,6 +300,37 @@ def test_syncode_recompute_form_true_independent(client):
         == "import_recomputed_parser_only"
     )
     assert step0["syncode_parser_evidence"]["value"]["mask_eos_observation"] is None
+
+
+def test_both_recomputations_and_lightweight_response(client):
+    http, _ = client
+    r = http.post(
+        "/import/bundle",
+        files={"file": ("bundle.zip", _minimal_zip(), "application/zip")},
+        data={
+            "recompute_with_current_grammar": "true",
+            "recompute_syncode_parser_evidence": "true",
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert set(body.keys()) >= {
+        "experiment_id",
+        "experiment_name",
+        "created_at",
+        "prompt_count",
+        "import_warnings",
+        "recompute_with_current_grammar",
+        "recompute_syncode_parser_evidence",
+    }
+    assert body["recompute_with_current_grammar"] is True
+    assert body["recompute_syncode_parser_evidence"] is True
+    # Must stay small — never serialize full traces on create.
+    assert len(r.content) < 8_000
+    detail = http.get(f"/imported-experiment/{body['experiment_id']}")
+    pr = detail.json()["prompt_results"][0]
+    assert pr["recomputed_grammar_verdict"]["provenance"]["kind"] == "recomputed"
+    assert pr["steps"][0]["syncode_parser_evidence"]["provenance"]["kind"] == "recomputed"
 
 
 def test_live_schema_and_generate_route_still_importable(client):

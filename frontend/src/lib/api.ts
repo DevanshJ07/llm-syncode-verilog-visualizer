@@ -12,6 +12,7 @@ import type {
   StepResponse,
 } from "@/types/decoding";
 import type {
+  ImportedExperimentCreatedResponse,
   ImportedExperimentSummary,
   NormalizedExperiment,
 } from "@/types/normalized";
@@ -22,8 +23,15 @@ const DEBUG_API = process.env.NODE_ENV === "development";
 /** Generation can run many minutes on CPU — do not abort early. */
 const GENERATE_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
 
-/** Import ZIP can be large but should not need model load. */
-const IMPORT_CLIENT_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * Import + optional SynCode parser-evidence recomputation can take several
+ * minutes (measured ~3–4+ min for 4×512-step bundles). Separate from ordinary
+ * GET timeouts. Matches the dedicated /api/import/bundle route proxy.
+ */
+const IMPORT_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Large imported detail payloads (SynCode evidence) may take longer to load. */
+const IMPORT_DETAIL_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Parse FastAPI error bodies into a human-readable string. */
 export function formatApiError(status: number, body: string): string {
@@ -102,9 +110,18 @@ async function request<T>(
   } catch (err) {
     if (timer) clearTimeout(timer);
     if (err instanceof Error && err.name === "AbortError") {
+      const isImport =
+        path.startsWith("/import/") || path.startsWith("/imported-experiment/");
       throw new Error(
-        "Request timed out — generation may still be running on the backend. " +
-          "Wait and refresh, or reduce max_new_tokens."
+        isImport
+          ? "Import request timed out after 10 minutes. The backend may still be finishing — refresh the imported list before retrying to avoid duplicates."
+          : "Request timed out — generation may still be running on the backend. " +
+              "Wait and refresh, or reduce max_new_tokens."
+      );
+    }
+    if (err instanceof TypeError) {
+      throw new Error(
+        `Network or proxy failure while calling ${path}: ${err.message || String(err)}`
       );
     }
     throw err;
@@ -236,6 +253,9 @@ export async function listExperiments(): Promise<string[]> {
  *
  * Grammar-verdict and SynCode parser-evidence recomputation are independent
  * FormData fields (both default false).
+ *
+ * Returns a lightweight created response (no per-step traces). Navigate with
+ * experiment_id; load full detail via GET /imported-experiment/{id}.
  */
 export async function postImportBundle(
   file: File,
@@ -245,7 +265,7 @@ export async function postImportBundle(
         recomputeWithCurrentGrammar?: boolean;
         recomputeSyncodeParserEvidence?: boolean;
       } = false
-): Promise<NormalizedExperiment> {
+): Promise<ImportedExperimentCreatedResponse> {
   const recomputeWithCurrentGrammar =
     typeof options === "boolean"
       ? options
@@ -265,7 +285,7 @@ export async function postImportBundle(
     "recompute_syncode_parser_evidence",
     recomputeSyncodeParserEvidence ? "true" : "false"
   );
-  return request<NormalizedExperiment>(
+  return request<ImportedExperimentCreatedResponse>(
     "/import/bundle",
     {
       method: "POST",
@@ -284,7 +304,9 @@ export async function listImportedExperiments(): Promise<
 export async function getImportedExperiment(
   id: string
 ): Promise<NormalizedExperiment> {
-  return request<NormalizedExperiment>(`/imported-experiment/${id}`);
+  return request<NormalizedExperiment>(`/imported-experiment/${id}`, undefined, {
+    timeoutMs: IMPORT_DETAIL_CLIENT_TIMEOUT_MS,
+  });
 }
 
 // ---------------------------------------------------------------------------

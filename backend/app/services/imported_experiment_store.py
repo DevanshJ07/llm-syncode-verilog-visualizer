@@ -14,7 +14,11 @@ import uuid
 from pathlib import Path
 
 from app.core.config import settings
-from app.models.normalized import ImportedExperimentSummary, NormalizedExperiment
+from app.models.normalized import (
+    ImportedExperimentCreatedResponse,
+    ImportedExperimentSummary,
+    NormalizedExperiment,
+)
 from app.models.provenance import ProvenanceKind
 from app.services.import_normalize import is_safe_experiment_id
 
@@ -123,6 +127,36 @@ def to_imported_summary(exp: NormalizedExperiment) -> ImportedExperimentSummary:
         import_warning_count=len(exp.import_warnings),
         has_generated_outputs=has_generated,
         model_name=model_name,
+    )
+
+
+def to_imported_created_response(
+    exp: NormalizedExperiment,
+) -> ImportedExperimentCreatedResponse:
+    """Build the lightweight POST /import/bundle body (no step traces)."""
+    runtime = exp.runtime_metadata
+    recompute_grammar = False
+    recompute_syncode = False
+    if (
+        not runtime.is_unavailable
+        and runtime.value
+        and isinstance(runtime.value, dict)
+    ):
+        recompute_grammar = bool(
+            runtime.value.get("recompute_with_current_grammar", False)
+        )
+        recompute_syncode = bool(
+            runtime.value.get("recompute_syncode_parser_evidence", False)
+        )
+
+    return ImportedExperimentCreatedResponse(
+        experiment_id=exp.experiment_id,
+        experiment_name=exp.experiment_name,
+        created_at=exp.created_at,
+        prompt_count=len(exp.prompt_results),
+        import_warnings=list(exp.import_warnings),
+        recompute_with_current_grammar=recompute_grammar,
+        recompute_syncode_parser_evidence=recompute_syncode,
     )
 
 
