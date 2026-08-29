@@ -3,6 +3,7 @@
 /**
  * Shared display helpers for imported-experiment metadata.
  * Host filesystem paths are never treated as openable targets.
+ * Phase 5A.2: dark research-console typography.
  */
 
 export function looksLikeWindowsPath(s: string): boolean {
@@ -11,7 +12,7 @@ export function looksLikeWindowsPath(s: string): boolean {
 
 export function MetaText({ value }: { value: unknown }) {
   if (value === null || value === undefined) {
-    return <span className="text-[#484f58]">Unavailable</span>;
+    return <span className="text-[#94a3b8]">Unavailable</span>;
   }
   const text =
     typeof value === "string"
@@ -22,13 +23,17 @@ export function MetaText({ value }: { value: unknown }) {
   if (typeof value === "string" && looksLikeWindowsPath(value)) {
     return (
       <span
-        className="break-all font-mono text-xs text-[#8b949e]"
+        className="break-all font-mono text-xs text-[#a8b3c7]"
         title="Recorded historical host path — not opened"
       >
         {text}
-        <span className="ml-2 text-[10px] text-[#484f58]">(path not opened)</span>
+        <span className="ml-2 font-sans text-[10px] text-[#94a3b8]">
+          (path not opened)
+        </span>
       </span>
     );
   }
-  return <span className="break-all font-mono text-xs text-[#e6edf3]">{text}</span>;
+  return (
+    <span className="break-all font-mono text-xs text-[#e5edf7]">{text}</span>
+  );
 }

@@ -2,35 +2,30 @@
 
 /**
  * StepPlayer — step navigation slider + autoplay controls.
- *
- * Controls:
- *   |◀  go to first step
- *   ◀   previous step
- *   ▶/⏸ play/pause autoplay
- *   ▶   next step
- *   ▶|  go to last step
- *   speed selector (ms per step)
- *   range slider for direct scrubbing
+ * appearance="research" uses layered dark research-console toolbar styles.
  */
 
 import { useEffect, useRef } from "react";
+import { useUiAppearance } from "@/components/ui/AppearanceContext";
 import { cn } from "@/lib/utils";
+import type { UiAppearance } from "@/lib/researchAppearance";
 
 interface Props {
   totalSteps: number;
-  currentStep: number;          // 0-indexed
+  currentStep: number; // 0-indexed
   isPlaying: boolean;
   onStepChange: (idx: number) => void;
   onPlayPause: () => void;
   playIntervalMs?: number;
   onIntervalChange?: (ms: number) => void;
+  appearance?: UiAppearance;
 }
 
 const SPEED_OPTIONS = [
   { label: "0.5×", ms: 2000 },
-  { label: "1×",   ms: 1000 },
-  { label: "2×",   ms: 500  },
-  { label: "4×",   ms: 250  },
+  { label: "1×", ms: 1000 },
+  { label: "2×", ms: 500 },
+  { label: "4×", ms: 250 },
 ];
 
 function Btn({
@@ -38,11 +33,13 @@ function Btn({
   disabled,
   title,
   children,
+  research,
 }: {
   onClick: () => void;
   disabled?: boolean;
   title?: string;
   children: React.ReactNode;
+  research: boolean;
 }) {
   return (
     <button
@@ -52,9 +49,19 @@ function Btn({
       title={title}
       className={cn(
         "flex h-7 w-7 items-center justify-center rounded text-sm transition-colors",
-        "bg-surface-raised border border-surface-border text-[#8b949e]",
-        "hover:border-[#484f58] hover:text-[#e6edf3]",
-        "disabled:opacity-30 disabled:pointer-events-none"
+        "focus-visible:outline-none focus-visible:ring-2",
+        research
+          ? cn(
+              "border border-[#334155] bg-[#172033] text-[#a8b3c7]",
+              "hover:border-blue-400/50 hover:text-[#e5edf7]",
+              "focus-visible:ring-blue-400",
+              "disabled:border-[#334155] disabled:bg-[#111827] disabled:text-[#94a3b8] disabled:opacity-100"
+            )
+          : cn(
+              "border border-surface-border bg-surface-raised text-[#8b949e]",
+              "hover:border-[#484f58] hover:text-[#e6edf3]",
+              "disabled:pointer-events-none disabled:opacity-30"
+            )
       )}
     >
       {children}
@@ -70,18 +77,18 @@ export function StepPlayer({
   onPlayPause,
   playIntervalMs = 1000,
   onIntervalChange,
+  appearance: appearanceProp,
 }: Props) {
+  const appearance = useUiAppearance(appearanceProp);
+  const research = appearance === "research";
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Autoplay: advance one step every playIntervalMs when playing.
-  // Stops automatically at the last step.
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     if (!isPlaying) return;
 
     intervalRef.current = setInterval(() => {
       onStepChange(Math.min(currentStep + 1, totalSteps - 1));
-      // Parent stops playing when currentStep reaches totalSteps - 1.
     }, playIntervalMs);
 
     return () => {
@@ -93,14 +100,29 @@ export function StepPlayer({
   const atEnd = currentStep === totalSteps - 1;
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-surface-border bg-surface-raised px-4 py-3">
-      {/* Top row: buttons + step counter + speed */}
-      <div className="flex items-center gap-2">
-        {/* Transport buttons */}
-        <Btn onClick={() => onStepChange(0)} disabled={atStart} title="First step">
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-md border px-4 py-3",
+        research
+          ? "border-[#334155] bg-[#172033]"
+          : "border-surface-border bg-surface-raised"
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Btn
+          research={research}
+          onClick={() => onStepChange(0)}
+          disabled={atStart}
+          title="First step"
+        >
           ⏮
         </Btn>
-        <Btn onClick={() => onStepChange(currentStep - 1)} disabled={atStart} title="Previous step">
+        <Btn
+          research={research}
+          onClick={() => onStepChange(currentStep - 1)}
+          disabled={atStart}
+          title="Previous step"
+        >
           ◀
         </Btn>
         <button
@@ -109,42 +131,81 @@ export function StepPlayer({
           title={isPlaying ? "Pause" : "Play"}
           className={cn(
             "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-colors",
-            isPlaying
-              ? "bg-accent-blue text-surface hover:bg-blue-400"
-              : "bg-surface-raised border border-surface-border text-[#8b949e] hover:border-accent-blue hover:text-accent-blue"
+            "focus-visible:outline-none focus-visible:ring-2",
+            research
+              ? isPlaying
+                ? "bg-blue-600 text-[#e5edf7] hover:bg-blue-500 focus-visible:ring-blue-400"
+                : "border border-[#334155] bg-[#172033] text-[#a8b3c7] hover:border-blue-400/50 hover:text-blue-300 focus-visible:ring-blue-400"
+              : isPlaying
+                ? "bg-accent-blue text-surface hover:bg-blue-400"
+                : "border border-surface-border bg-surface-raised text-[#8b949e] hover:border-accent-blue hover:text-accent-blue"
           )}
         >
           {isPlaying ? "⏸" : "▶"}
         </button>
-        <Btn onClick={() => onStepChange(currentStep + 1)} disabled={atEnd} title="Next step">
+        <Btn
+          research={research}
+          onClick={() => onStepChange(currentStep + 1)}
+          disabled={atEnd}
+          title="Next step"
+        >
           ▶
         </Btn>
-        <Btn onClick={() => onStepChange(totalSteps - 1)} disabled={atEnd} title="Last step">
+        <Btn
+          research={research}
+          onClick={() => onStepChange(totalSteps - 1)}
+          disabled={atEnd}
+          title="Last step"
+        >
           ⏭
         </Btn>
 
-        {/* Step counter */}
-        <span className="ml-2 font-mono text-xs text-[#8b949e]">
+        <span
+          className={cn(
+            "ml-2 font-mono text-xs",
+            research ? "text-[#a8b3c7]" : "text-[#8b949e]"
+          )}
+        >
           step{" "}
-          <span className="text-[#e6edf3]">{currentStep + 1}</span>
+          <span
+            className={cn(
+              "font-semibold",
+              research ? "text-[#e5edf7]" : "text-[#e6edf3]"
+            )}
+          >
+            {currentStep + 1}
+          </span>
           {" / "}
-          <span className="text-[#484f58]">{totalSteps}</span>
+          <span className={research ? "text-[#94a3b8]" : "text-[#484f58]"}>
+            {totalSteps}
+          </span>
         </span>
 
-        {/* Speed selector */}
         {onIntervalChange && (
           <div className="ml-auto flex items-center gap-1">
-            <span className="text-[10px] text-[#484f58]">speed</span>
+            <span
+              className={cn(
+                "text-[10px]",
+                research ? "text-[#94a3b8]" : "text-[#484f58]"
+              )}
+            >
+              speed
+            </span>
             {SPEED_OPTIONS.map((opt) => (
               <button
                 key={opt.ms}
                 type="button"
                 onClick={() => onIntervalChange(opt.ms)}
                 className={cn(
-                  "rounded px-1.5 py-0.5 text-[10px] font-mono transition-colors",
-                  playIntervalMs === opt.ms
-                    ? "bg-accent-blue/20 text-accent-blue"
-                    : "text-[#484f58] hover:text-[#8b949e]"
+                  "rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2",
+                  research
+                    ? playIntervalMs === opt.ms
+                      ? "border border-blue-400/50 bg-blue-500/15 text-blue-300 focus-visible:ring-blue-400"
+                      : "text-[#94a3b8] hover:text-[#e5edf7] focus-visible:ring-blue-400"
+                    : playIntervalMs === opt.ms
+                      ? "bg-accent-blue/20 text-accent-blue"
+                      : "text-[#484f58] hover:text-[#8b949e]"
                 )}
               >
                 {opt.label}
@@ -154,14 +215,17 @@ export function StepPlayer({
         )}
       </div>
 
-      {/* Range slider */}
       <input
         type="range"
         min={0}
         max={totalSteps - 1}
         value={currentStep}
         onChange={(e) => onStepChange(Number(e.target.value))}
-        className="w-full accent-accent-blue"
+        className={cn(
+          "w-full",
+          research ? "accent-blue-400" : "accent-accent-blue"
+        )}
+        aria-label="Trace step scrubber"
       />
     </div>
   );

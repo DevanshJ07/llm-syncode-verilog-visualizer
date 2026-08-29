@@ -1,25 +1,36 @@
+"use client";
+
 import { cn } from "@/lib/utils";
+import { useUiAppearance } from "@/components/ui/AppearanceContext";
 import {
   formatGrammarValidProv,
   formatProvDisplay,
 } from "@/lib/provenanceDisplay";
+import type { UiAppearance } from "@/lib/researchAppearance";
 import { provenanceLabel, type Prov, type ProvenanceKind } from "@/types/provenance";
 
-const kindClass: Record<ProvenanceKind, string> = {
+const darkKind: Record<ProvenanceKind, string> = {
   recorded: "text-[#e6edf3]",
   derived: "text-accent-blue",
   recomputed: "text-accent-purple",
   unavailable: "text-[#484f58]",
 };
 
+const researchKind: Record<ProvenanceKind, string> = {
+  recorded: "text-[#e5edf7]",
+  derived: "text-[#a8b3c7]",
+  recomputed: "text-purple-300",
+  unavailable: "text-[#94a3b8]",
+};
+
 interface ProvenanceValueProps {
   label: string;
   value: Prov<unknown> | null | undefined;
-  /** Treat boolean grammar_valid with Valid/Invalid wording. */
   grammarValid?: boolean;
   className?: string;
-  /** Optional note under the value (e.g. method). */
   showMethod?: boolean;
+  appearance?: UiAppearance;
+  emphasis?: "primary" | "normal";
 }
 
 export function ProvenanceValue({
@@ -28,18 +39,50 @@ export function ProvenanceValue({
   grammarValid = false,
   className,
   showMethod = false,
+  appearance: appearanceProp,
+  emphasis = "normal",
 }: ProvenanceValueProps) {
+  const appearance = useUiAppearance(appearanceProp);
   const display = grammarValid
     ? formatGrammarValidProv(value as Prov<boolean> | null | undefined)
     : formatProvDisplay(value);
 
+  const kindMap = appearance === "research" ? researchKind : darkKind;
+  const research = appearance === "research";
+
+  let valueTone = kindMap[display.kind];
+  if (research && grammarValid && !display.unavailable) {
+    const raw = String(display.text).toLowerCase();
+    if (raw.includes("valid") && !raw.includes("invalid")) {
+      valueTone = "text-emerald-300 font-semibold";
+    } else if (raw.includes("invalid")) {
+      valueTone = "text-red-300 font-semibold";
+    }
+  }
+
   return (
-    <div className={cn("min-w-0", className)}>
-      <p className="text-[10px] uppercase tracking-wider text-[#484f58]">{label}</p>
+    <div
+      className={cn(
+        "min-w-0",
+        research &&
+          emphasis === "primary" &&
+          "rounded-md border border-[#334155] bg-[#172033] px-3 py-2",
+        className
+      )}
+    >
+      <p
+        className={cn(
+          "text-[10px] uppercase tracking-wider",
+          research ? "font-sans text-[#94a3b8]" : "text-[#484f58]"
+        )}
+      >
+        {label}
+      </p>
       <p
         className={cn(
           "mt-0.5 break-words font-mono text-sm",
-          kindClass[display.kind]
+          research && emphasis === "primary" && "text-base",
+          valueTone
         )}
         title={
           value?.provenance?.method
@@ -50,7 +93,14 @@ export function ProvenanceValue({
         {display.text}
       </p>
       {showMethod && value?.provenance?.method && !display.unavailable && (
-        <p className="mt-0.5 text-[10px] text-[#484f58]">{value.provenance.method}</p>
+        <p
+          className={cn(
+            "mt-0.5 text-[10px]",
+            research ? "text-[#94a3b8]" : "text-[#484f58]"
+          )}
+        >
+          {value.provenance.method}
+        </p>
       )}
     </div>
   );

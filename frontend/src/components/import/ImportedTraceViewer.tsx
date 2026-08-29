@@ -74,13 +74,21 @@ export interface ImportedTraceViewerProps {
   showToolbar?: boolean;
 }
 
-const MARKER_COLOR: Record<string, string> = {
-  ordinary: "#30363d",
-  intervention: "#f85149",
-  parse_failed: "#d29922",
-  both: "#a371f7",
-  active: "#58a6ff",
-};
+function timelineMarkerClass(kind: string, active: boolean): string {
+  if (active) {
+    return "scale-y-125 bg-blue-400 ring-2 ring-blue-400 ring-offset-1 ring-offset-[#111827]";
+  }
+  switch (kind) {
+    case "intervention":
+      return "bg-red-500";
+    case "parse_failed":
+      return "bg-amber-500";
+    case "both":
+      return "bg-red-500 ring-1 ring-amber-500 ring-inset";
+    default:
+      return "bg-[#64748b]";
+  }
+}
 
 function FlagCell({
   label,
@@ -97,11 +105,11 @@ function FlagCell({
       : `${value ? "True" : "False"} — ${provenanceLabel(kind)}`;
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wider text-[#484f58]">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">{label}</p>
       <p
         className={cn(
           "mt-0.5 font-mono text-sm",
-          value === null ? "text-[#484f58]" : "text-[#e6edf3]"
+          value === null ? "text-[#94a3b8]" : "text-[#e5edf7]"
         )}
       >
         {text}
@@ -120,21 +128,27 @@ function TokenDecisionRow({
   field: "raw_preferred" | "constrained_preferred" | "selected";
 }) {
   const info = tokenRefLabel(step[field]);
+  const emphasis =
+    field === "selected"
+      ? "border-blue-400/50 bg-blue-500/15"
+      : "border-[#334155] bg-[#0b1220]";
   return (
-    <div className="rounded-md border border-surface-border bg-surface px-3 py-2">
-      <p className="text-[10px] uppercase tracking-wider text-[#484f58]">{label}</p>
+    <div className={cn("rounded-md border px-3 py-2", emphasis)}>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#a8b3c7]">
+        {label}
+      </p>
       <p
         className={cn(
           "mt-1 break-all font-mono text-sm",
-          info.unavailable ? "text-[#484f58]" : "text-[#e6edf3]"
+          info.unavailable ? "text-[#94a3b8]" : "text-[#e5edf7]"
         )}
       >
         {info.tokenDisplay}
       </p>
-      <p className="mt-0.5 font-mono text-[11px] text-[#8b949e]">
+      <p className="mt-0.5 font-mono text-[11px] text-[#a8b3c7]">
         id={info.idDisplay}
         {!info.unavailable && (
-          <span className="ml-2 text-[#484f58]">
+          <span className="ml-2 text-[#94a3b8]">
             · {provenanceLabel(info.kind)}
           </span>
         )}
@@ -154,38 +168,26 @@ function CompactTimeline({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-3 text-[10px] text-[#484f58]">
+      <div className="flex flex-wrap items-center gap-3 text-[10px] text-[#94a3b8]">
         <span className="flex items-center gap-1">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ background: MARKER_COLOR.ordinary }}
-          />
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#64748b]" />
           Ordinary
         </span>
         <span className="flex items-center gap-1">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ background: MARKER_COLOR.intervention }}
-          />
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-red-500" />
           Intervention
         </span>
         <span className="flex items-center gap-1">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ background: MARKER_COLOR.parse_failed }}
-          />
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-500" />
           Parse failed
         </span>
         <span className="flex items-center gap-1">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ background: MARKER_COLOR.both }}
-          />
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-red-500 ring-1 ring-amber-500 ring-inset" />
           Both
         </span>
       </div>
       <div
-        className="flex max-h-16 flex-wrap content-start gap-px overflow-y-auto rounded border border-surface-border bg-surface p-1"
+        className="flex max-h-16 flex-wrap content-start gap-px overflow-y-auto rounded border border-[#334155] bg-[#0b1220] p-1"
         role="listbox"
         aria-label="Trace step timeline"
       >
@@ -202,12 +204,8 @@ function CompactTimeline({
               onClick={() => onSelect(i)}
               className={cn(
                 "h-3 w-1.5 shrink-0 rounded-[1px] transition-transform",
-                active &&
-                  "scale-y-125 ring-1 ring-accent-blue ring-offset-1 ring-offset-surface"
+                timelineMarkerClass(kind, active)
               )}
-              style={{
-                background: active ? MARKER_COLOR.active : MARKER_COLOR[kind],
-              }}
             />
           );
         })}
@@ -276,14 +274,14 @@ export function ImportedTraceToolbar({
         onIntervalChange={setPlayIntervalMs}
       />
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-xs text-[#8b949e]">
+        <span className="font-mono text-xs text-[#a8b3c7]">
           recorded step_index={" "}
-          <span className="text-[#e6edf3]">{step?.step_index ?? "—"}</span>
+          <span className="text-[#e5edf7]">{step?.step_index ?? "—"}</span>
           {" · "}
           ordinal {activeIndex + 1}/{steps.length}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1 text-xs text-[#8b949e]">
+          <label className="flex items-center gap-1 text-xs text-[#a8b3c7]">
             Jump to step
             <input
               type="number"
@@ -292,7 +290,7 @@ export function ImportedTraceToolbar({
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleJump();
               }}
-              className="w-20 rounded border border-surface-border bg-surface px-2 py-1 font-mono text-xs text-[#e6edf3]"
+              className="w-20 rounded border border-[#334155] bg-[#0b1220] px-2 py-1 font-mono text-xs text-[#e5edf7] shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
               aria-label="Jump to recorded step index"
             />
           </label>
@@ -370,7 +368,7 @@ export function ImportedTraceViewer({
 
   if (steps.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-surface-border px-4 py-8 text-center text-sm text-[#8b949e]">
+      <div className="rounded-md border border-dashed border-[#334155] px-4 py-8 text-center text-sm text-[#94a3b8]">
         Empty trace — no recorded decoding steps for this prompt.
       </div>
     );
@@ -420,36 +418,36 @@ export function ImportedTraceViewer({
   return (
     <div className="flex flex-col gap-3">
       {/* Compact trace summary (not full evidence) */}
-      <div className="grid gap-2 rounded-md border border-surface-border bg-surface-raised px-3 py-2 sm:grid-cols-4">
+      <div className="grid gap-2 rounded-md border border-[#334155] bg-[#172033] px-3 py-2 sm:grid-cols-4">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+          <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
             Total steps
           </p>
-          <p className="font-mono text-sm text-[#e6edf3]">{overview.totalSteps}</p>
+          <p className="font-mono text-sm text-[#e5edf7]">{overview.totalSteps}</p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+          <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
             Interventions
           </p>
-          <p className="font-mono text-sm text-[#e6edf3]">
+          <p className="font-mono text-sm text-[#e5edf7]">
             {overview.interventionEvidenceAvailable
               ? overview.interventionCount
               : "Unavailable"}
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+          <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
             Parse-failed steps
           </p>
-          <p className="font-mono text-sm text-[#e6edf3]">
+          <p className="font-mono text-sm text-[#e5edf7]">
             {overview.parseFailedCount}
           </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+          <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
             First intervention
           </p>
-          <p className="font-mono text-sm text-[#e6edf3]">
+          <p className="font-mono text-sm text-[#e5edf7]">
             {overview.firstInterventionIndex === null
               ? overview.interventionEvidenceAvailable
                 ? "None"
@@ -472,11 +470,11 @@ export function ImportedTraceViewer({
       )}
 
       {!step ? (
-        <p className="text-sm text-[#8b949e]">No active step.</p>
+        <p className="text-sm text-[#94a3b8]">No active step.</p>
       ) : (
         <div className="grid min-h-0 gap-3 lg:grid-cols-2 lg:items-stretch">
           {/* LEFT: derived output at this step */}
-          <div className="flex min-h-[min(50vh,28rem)] flex-col rounded-md border border-surface-border bg-surface-raised p-3 lg:min-h-[min(70vh,40rem)]">
+          <div className="flex min-h-[min(50vh,28rem)] flex-col rounded-md border border-[#334155] bg-[#111827] p-3 lg:min-h-[min(70vh,40rem)]">
             <ImportedOutputAtStep
               prefixBefore={prefixBefore}
               selectedToken={selectedToken}
@@ -486,11 +484,11 @@ export function ImportedTraceViewer({
           </div>
 
           {/* RIGHT: evidence tabs */}
-          <div className="flex min-h-[min(50vh,28rem)] flex-col rounded-md border border-surface-border bg-surface-raised lg:min-h-[min(70vh,40rem)]">
+          <div className="flex min-h-[min(50vh,28rem)] flex-col rounded-md border border-[#334155] bg-[#111827] lg:min-h-[min(70vh,40rem)]">
             <div
               role="tablist"
               aria-label="Step evidence"
-              className="flex shrink-0 flex-wrap gap-1 border-b border-surface-border p-2"
+              className="flex shrink-0 flex-wrap gap-1 border-b border-[#334155] bg-[#172033] p-2"
             >
               {EVIDENCE_TABS.map((tab) => {
                 const selected = evidenceTab === tab.id;
@@ -505,10 +503,10 @@ export function ImportedTraceViewer({
                     tabIndex={selected ? 0 : -1}
                     onClick={() => onEvidenceTabChange(tab.id)}
                     className={cn(
-                      "rounded px-2 py-1 text-[11px] font-medium transition-colors",
+                      "rounded border px-2 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400",
                       selected
-                        ? "bg-accent-blue/15 text-accent-blue"
-                        : "text-[#8b949e] hover:bg-surface hover:text-[#e6edf3]"
+                        ? "border-blue-400/50 bg-blue-500/15 text-blue-200"
+                        : "border-transparent text-[#a8b3c7] hover:border-[#334155] hover:bg-[#172033]"
                     )}
                   >
                     {tab.label}
@@ -526,7 +524,7 @@ export function ImportedTraceViewer({
               {evidenceTab === "decision" && (
                 <section className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[#a8b3c7]">
                       Token decision
                     </h3>
                     {isRecordedIntervention(step) && (
@@ -571,16 +569,25 @@ export function ImportedTraceViewer({
                       kind={finite!.kind}
                     />
                   </div>
-                  <p className="text-xs leading-relaxed text-[#8b949e]">
+                  <p
+                    className={cn(
+                      "text-xs leading-relaxed",
+                      isRecordedIntervention(step)
+                        ? "text-red-400"
+                        : blocked?.value === false
+                          ? "text-emerald-400"
+                          : "text-[#a8b3c7]"
+                    )}
+                  >
                     {explainIntervention(step)}
                   </p>
-                  <p className="text-[10px] text-[#484f58]">
+                  <p className="text-[10px] text-[#94a3b8]">
                     Whitespace tokens are shown escaped (e.g. &quot;\n&quot;,
                     &quot;,\n&quot;, spaces as ·). Strings are not trimmed.
                   </p>
                   {step.step_warnings.length > 0 && (
-                    <div className="rounded-md border border-amber-500/30 bg-amber-900/10 px-3 py-2 text-xs text-[#e6edf3]">
-                      <p className="font-semibold text-amber-200/80">
+                    <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                      <p className="font-semibold text-amber-300">
                         Step warnings
                       </p>
                       <ul className="mt-1 list-disc pl-4">
@@ -603,29 +610,29 @@ export function ImportedTraceViewer({
               {evidenceTab === "tokenizer" && (
                 <section className="flex flex-col gap-3">
                   <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[#a8b3c7]">
                       Tokenizer mask
                     </h3>
-                    <p className="mt-1 text-[10px] text-[#484f58]">
+                    <p className="mt-1 text-[10px] text-[#94a3b8]">
                       Tokenizer-mask evidence describes actual vocabulary tokens
                       / logits allowed or blocked. Not SynCode accept sequences
                       and not Lark expected terminals.
                     </p>
                   </div>
-                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-[#484f58]">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-[#94a3b8]">
                     Mask statistics
                   </h4>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+                      <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
                         Vocabulary-logit count
                       </p>
                       <p
                         className={cn(
                           "mt-0.5 font-mono text-sm",
                           vocabCount!.value === null
-                            ? "text-[#484f58]"
-                            : "text-[#e6edf3]"
+                            ? "text-[#94a3b8]"
+                            : "text-[#e5edf7]"
                         )}
                       >
                         {vocabCount!.value === null
@@ -646,7 +653,7 @@ export function ImportedTraceViewer({
                       value={step.masked_token_count}
                     />
                   </div>
-                  <p className="text-[10px] text-[#484f58]">
+                  <p className="text-[10px] text-[#94a3b8]">
                     Field names match the recorded schema.
                     newly_masked_token_count is not reinterpreted as a stronger
                     claim.
@@ -657,15 +664,15 @@ export function ImportedTraceViewer({
               {evidenceTab === "prefix_lark" && (
                 <section className="flex flex-col gap-4">
                   <div>
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#a8b3c7]">
                       Prefix information
                     </h3>
                     <div className="grid gap-3">
                       <div>
-                        <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+                        <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
                           Recorded prefix_tail
                         </p>
-                        <p className="mt-1 max-h-24 overflow-y-auto break-all font-mono text-xs text-[#e6edf3]">
+                        <p className="mt-1 max-h-24 overflow-y-auto break-all font-mono text-xs text-[#a8b3c7]">
                           {formatProvDisplay(step.prefix_before_selected, {
                             formatValue: (v) =>
                               typeof v === "string"
@@ -673,26 +680,26 @@ export function ImportedTraceViewer({
                                 : String(v),
                           }).text}
                         </p>
-                        <p className="mt-1 text-[10px] text-[#484f58]">
+                        <p className="mt-1 text-[10px] text-[#94a3b8]">
                           Not the complete prefix — may be truncated. Shown with
                           JSON escaping so whitespace stays visible.
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+                        <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
                           generated_prefix_tokens
                         </p>
-                        <p className="mt-1 font-mono text-sm text-[#e6edf3]">
+                        <p className="mt-1 font-mono text-sm text-[#e5edf7]">
                           {prefixTokCount!.value === null
                             ? "Unavailable"
                             : `${prefixTokCount!.value} — ${provenanceLabel(prefixTokCount!.kind)}`}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+                        <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
                           Derived prefix before selected
                         </p>
-                        <p className="mt-1 max-h-24 overflow-y-auto break-all font-mono text-xs text-accent-blue">
+                        <p className="mt-1 max-h-24 overflow-y-auto break-all font-mono text-xs text-[#a8b3c7]">
                           {isUnavailable(prefixBefore) ||
                           prefixBefore.value === null
                             ? "Unavailable"
@@ -700,10 +707,10 @@ export function ImportedTraceViewer({
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wider text-[#484f58]">
+                        <p className="text-[10px] uppercase tracking-wider text-[#94a3b8]">
                           Derived prefix after selected
                         </p>
-                        <p className="mt-1 max-h-24 overflow-y-auto break-all font-mono text-xs text-accent-blue">
+                        <p className="mt-1 max-h-24 overflow-y-auto break-all font-mono text-xs text-[#a8b3c7]">
                           {isUnavailable(prefixAfter) ||
                           prefixAfter.value === null
                             ? "Unavailable"
@@ -714,16 +721,16 @@ export function ImportedTraceViewer({
                   </div>
 
                   <div>
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#a8b3c7]">
                       Parser flags
                     </h3>
                     {isUnavailable(step.parser_info) || !step.parser_info.value ? (
-                      <p className="text-sm text-[#484f58]">
+                      <p className="text-sm text-[#94a3b8]">
                         Parser details were not recorded for this step
                         (Unavailable).
                       </p>
                     ) : (
-                      <p className="font-mono text-sm text-[#e6edf3]">
+                      <p className="font-mono text-sm text-[#e5edf7]">
                         syncode_parse_failed:{" "}
                         {step.parser_info.value.syncode_parse_failed === true
                           ? "True — Recorded"
@@ -735,21 +742,21 @@ export function ImportedTraceViewer({
                   </div>
 
                   <div>
-                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#a8b3c7]">
                       Lark incremental parser
                     </h3>
-                    <p className="mb-3 text-[10px] text-[#484f58]">
+                    <p className="mb-3 text-[10px] text-[#94a3b8]">
                       Lark terminals describe grammar-parser expectations. They
                       are not SynCode accept sequences and not tokenizer
                       vocabulary tokens.
                     </p>
                     {isUnavailable(step.expected_terminals) ||
                     step.expected_terminals.value === null ? (
-                      <p className="text-sm text-[#484f58]">
+                      <p className="text-sm text-[#94a3b8]">
                         Expected Lark terminals unavailable for this step.
                       </p>
                     ) : step.expected_terminals.value.length === 0 ? (
-                      <p className="text-sm text-[#484f58]">
+                      <p className="text-sm text-[#94a3b8]">
                         Recorded empty Lark expected-terminal list.
                       </p>
                     ) : (
@@ -757,14 +764,14 @@ export function ImportedTraceViewer({
                         {step.expected_terminals.value.map((t, i) => (
                           <span
                             key={`${t}-${i}`}
-                            className="rounded border border-[#30363d] bg-[#161b22] px-1.5 py-0.5 font-mono text-[11px] text-[#58a6ff]"
+                            className="rounded border border-[#334155] bg-[#0b1220] px-1.5 py-0.5 font-mono text-[11px] text-blue-300"
                           >
                             {t}
                           </span>
                         ))}
                       </div>
                     )}
-                    <p className="mt-2 text-[10px] text-[#484f58]">
+                    <p className="mt-2 text-[10px] text-[#94a3b8]">
                       Provenance:{" "}
                       {provenanceLabel(
                         isUnavailable(step.expected_terminals)
@@ -778,25 +785,25 @@ export function ImportedTraceViewer({
 
               {evidenceTab === "top_raw" && (
                 <section className="flex flex-col gap-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[#a8b3c7]">
                     Top raw tokens
                   </h3>
-                  <p className="text-[10px] text-[#484f58]">
+                  <p className="text-[10px] text-[#94a3b8]">
                     Recorded top-k subset only — not the full vocabulary. Logits
                     are shown as recorded; probabilities and entropy are not
                     derived.
                   </p>
                   {topRaw!.unavailable ? (
-                    <p className="text-sm text-[#484f58]">Unavailable</p>
+                    <p className="text-sm text-[#94a3b8]">Unavailable</p>
                   ) : topRaw!.items.length === 0 ? (
-                    <p className="text-sm text-[#484f58]">
+                    <p className="text-sm text-[#94a3b8]">
                       Recorded empty top-k list — []
                     </p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[28rem] border-collapse text-left text-xs">
                         <thead>
-                          <tr className="border-b border-surface-border text-[#484f58]">
+                          <tr className="border-b border-[#334155] bg-[#172033] text-[#a8b3c7]">
                             <th className="px-2 py-1.5 font-medium">Token</th>
                             <th className="px-2 py-1.5 font-medium">ID</th>
                             <th className="px-2 py-1.5 font-medium">Raw logit</th>
@@ -844,33 +851,33 @@ export function ImportedTraceViewer({
                               <tr
                                 key={i}
                                 className={cn(
-                                  "border-b border-surface-border/60",
-                                  highlight && "bg-accent-blue/5"
+                                  "border-b border-[#334155]",
+                                  highlight && "bg-blue-500/15"
                                 )}
                               >
-                                <td className="px-2 py-1.5 font-mono text-[#e6edf3]">
+                                <td className="px-2 py-1.5 font-mono text-[#e5edf7]">
                                   {row.token === null
                                     ? "Unavailable"
                                     : escapeTokenForDisplay(row.token)}
                                 </td>
-                                <td className="px-2 py-1.5 font-mono text-[#8b949e]">
+                                <td className="px-2 py-1.5 font-mono text-[#a8b3c7]">
                                   {row.tokenId === null
                                     ? "Unavailable"
                                     : row.tokenId}
                                 </td>
-                                <td className="px-2 py-1.5 font-mono text-[#e6edf3]">
+                                <td className="px-2 py-1.5 font-mono text-[#e5edf7]">
                                   {row.logit === null
                                     ? "Unavailable"
                                     : String(row.logit)}
                                 </td>
-                                <td className="px-2 py-1.5 font-mono text-[#8b949e]">
+                                <td className="px-2 py-1.5 font-mono text-[#a8b3c7]">
                                   {row.allowedAfterSyncode === null
                                     ? "Unavailable"
                                     : row.allowedAfterSyncode
                                       ? "True"
                                       : "False"}
                                 </td>
-                                <td className="px-2 py-1.5 text-[#8b949e]">
+                                <td className="px-2 py-1.5 text-[#a8b3c7]">
                                   {roles.length ? roles.join(", ") : "—"}
                                 </td>
                               </tr>
@@ -878,7 +885,7 @@ export function ImportedTraceViewer({
                           })}
                         </tbody>
                       </table>
-                      <p className="mt-1 text-[10px] text-[#484f58]">
+                      <p className="mt-1 text-[10px] text-[#94a3b8]">
                         Provenance: {provenanceLabel(topRaw!.kind)}
                       </p>
                     </div>
@@ -888,26 +895,26 @@ export function ImportedTraceViewer({
 
               {evidenceTab === "availability" && (
                 <section>
-                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#a8b3c7]">
                     Evidence availability
                   </h3>
-                  <ul className="grid gap-1.5">
+                  <ul className="grid gap-1">
                     {channels.map((row) => (
                       <li
                         key={row.channel}
-                        className="flex items-baseline justify-between gap-2 rounded border border-surface-border/50 px-2 py-1 text-xs"
+                        className="flex items-baseline justify-between gap-2 rounded border border-[#334155] bg-[#0b1220] px-2 py-1 text-xs"
                       >
-                        <span className="text-[#8b949e]">{row.channel}</span>
+                        <span className="text-[#a8b3c7]">{row.channel}</span>
                         <span
                           className={cn(
                             "shrink-0 font-mono",
                             row.status === "unavailable"
-                              ? "text-[#484f58]"
+                              ? "text-[#94a3b8]"
                               : row.status === "derived"
-                                ? "text-accent-blue"
+                                ? "text-[#a8b3c7]"
                                 : row.status === "recomputed"
-                                  ? "text-accent-purple"
-                                  : "text-[#e6edf3]"
+                                  ? "text-purple-300"
+                                  : "text-[#a8b3c7]"
                           )}
                           title={row.note}
                         >
