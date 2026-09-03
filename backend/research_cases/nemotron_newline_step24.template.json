@@ -1,0 +1,30 @@
+{
+  "case_id": "nemotron_newline_step24",
+  "description": "Nemotron Prob004_vector2 step 24 — newline vs comma-newline intervention. Fill NSCC fields before running; do not guess model IDs.",
+  "source_trace_path": "<FILL:original_NSCC_or_imported_trace.json>",
+  "prompt_id": "Prob004_vector2",
+  "step_index": 24,
+  "step_index_unit": "zero_based",
+  "prefix_source": "reconstructed_from_selected_tokens",
+  "candidate_token_ids": [1010, 1520],
+  "expected_decoded_candidates": {
+    "1010": "\n",
+    "1520": ",\n"
+  },
+  "selected_token_id": 1520,
+  "raw_argmax_token_id": 1010,
+  "witness_completion_suffix": "<FILL:completion_suffix_or_use_witness_source_file>",
+  "witness_source_file": null,
+  "expected_grammar_sha256": "1d4dc2bccf39f3e591e3dc59834c1c17b33b3f27d00a7ddd8810c795510cc4ef",
+  "expected_tokenizer_model": "<FILL:exact_nemotron_tokenizer_model_id>",
+  "expected_tokenizer_revision": "<FILL:exact_revision>",
+  "tokenizer_model_id": "<FILL:exact_nemotron_tokenizer_model_id>",
+  "tokenizer_revision": "<FILL:exact_revision>",
+  "trust_remote_code": false,
+  "parser_mode": "lalr",
+  "mask_store_mode": "fresh_isolated",
+  "mask_store_cache_path": "<FILL:for_existing_cache_mode_only>",
+  "syncode_mode": "grammar_mask",
+  "allow_unsupported_syncode_version": false,
+  "_controls_notes": "Also probe double-newline, space, multi-space, ),;\\n when those token IDs are recorded in the original trace. Add their IDs to candidate_token_ids and expected_decoded_candidates."
+}
