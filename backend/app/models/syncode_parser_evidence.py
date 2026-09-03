@@ -62,11 +62,40 @@ RemainderKind = Literal[
     "unavailable",
 ]
 
+# How core_lookahead_k / construction metadata was established for this payload.
+SemanticsProvenance = Literal[
+    "recorded",
+    "recomputed",
+    "derived_from_version",
+    "unavailable",
+]
+
+# Classification of one AcceptSequence under SynCode 0.4.16
+# ``ParseResult.from_accept_terminals`` rules.  Prefer ``unknown`` when ambiguous.
+AcceptSequenceConstructionKind = Literal[
+    "current_terminal",
+    "next_terminal",
+    "final_then_next",
+    "final_ignore_next",
+    "ignore_only",
+    "unknown",
+]
+
 
 class AcceptSequenceRecord(BaseModel):
-    """One ordered SynCode AcceptSequence (terminal names only)."""
+    """
+    One ordered SynCode AcceptSequence (grammar-terminal names only).
+
+    Optional classification fields are filled for newly serialized evidence when
+    construction can be established unambiguously.  Historical payloads that
+    only carry ``terminals`` must leave the optional fields absent/None —
+    never invent ``recorded`` classifications.
+    """
 
     terminals: list[str] = Field(default_factory=list)
+    displayed_terminal_count: Optional[int] = None
+    construction_kind: Optional[AcceptSequenceConstructionKind] = None
+    contains_ignored_terminal: Optional[bool] = None
 
 
 class RemainderRepresentation(BaseModel):
@@ -131,6 +160,17 @@ class SyncodeParserEvidence(BaseModel):
     function_end: Optional[bool] = None
     # True when any stored/original sequence begins with $END or EOF.
     grammar_end_marker_present: bool = False
+
+    # --- Checkpoint 1: accept-sequence semantics (optional / backward-compat) ---
+    # Core lookahead k counts grammar terminals (not LLM tokenizer tokens).
+    # SynCode 0.4.16 effective core k=2; length-3 paths are ignore intercalation.
+    core_lookahead_k: Optional[int] = None
+    core_lookahead_unit: Optional[str] = None
+    sequence_construction: Optional[str] = None
+    current_accept_terminals: Optional[list[str]] = None
+    next_accept_terminals: Optional[list[str]] = None
+    ignore_terminals: Optional[list[str]] = None
+    semantics_provenance: Optional[SemanticsProvenance] = None
 
     mask_eos_observation: Optional[MaskEosObservation] = None
 

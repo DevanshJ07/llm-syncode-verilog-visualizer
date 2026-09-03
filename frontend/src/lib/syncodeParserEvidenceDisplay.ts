@@ -6,11 +6,13 @@
 import { escapeTokenForDisplay } from "@/lib/importedTrace";
 import { provenanceLabel, type ProvenanceKind } from "@/types/provenance";
 import type {
+  AcceptSequenceConstructionKind,
   EvidenceOrigin,
   MaskEosObservation,
   RemainderKind,
   RemainderRepresentation,
   RemainderStateName,
+  SemanticsProvenance,
   SyncodeParserEvidence,
   SyncodeParserEvidenceStatus,
 } from "@/types/syncodeParserEvidence";
@@ -47,7 +49,23 @@ export function evidenceTimingLabel(
   timing: string | undefined | null
 ): string {
   if (timing === "before_selected_token") return "Before selected token";
-  return timing || "Before selected token";
+  if (timing == null || timing === "") return "Unavailable";
+  return String(timing);
+}
+
+export function remainderStateLabel(
+  state: RemainderStateName | string | null | undefined
+): string {
+  switch (state) {
+    case "COMPLETE":
+      return "Complete";
+    case "MAYBE_COMPLETE":
+      return "Maybe complete";
+    case "INCOMPLETE":
+      return "Incomplete";
+    default:
+      return "Unavailable";
+  }
 }
 
 export function remainderStateExplanation(
@@ -68,6 +86,92 @@ export function remainderStateExplanation(
 export function formatAcceptSequenceTerminals(terminals: string[]): string {
   if (terminals.length === 0) return "(empty terminal chain)";
   return terminals.join(" → ");
+}
+
+export function constructionKindLabel(
+  kind: AcceptSequenceConstructionKind | string | null | undefined
+): string {
+  switch (kind) {
+    case "current_terminal":
+      return "current terminal";
+    case "next_terminal":
+      return "next terminal";
+    case "final_then_next":
+      return "final → next";
+    case "final_ignore_next":
+      return "final → ignore → next";
+    case "ignore_only":
+      return "ignore only";
+    case "unknown":
+      return "unknown";
+    default:
+      return "Unavailable";
+  }
+}
+
+export function semanticsProvenanceLabel(
+  kind: SemanticsProvenance | string | null | undefined
+): string {
+  switch (kind) {
+    case "recorded":
+      return "Recorded";
+    case "recomputed":
+      return "Recomputed";
+    case "derived_from_version":
+      return "Derived from version";
+    case "unavailable":
+      return "Unavailable";
+    default:
+      return "Unavailable";
+  }
+}
+
+/**
+ * Display core lookahead without inventing Recorded semantics.
+ * Missing fields on historical evidence → Unavailable, or Derived from
+ * SynCode 0.4.16 when only the version string is known.
+ */
+export function coreLookaheadDisplay(
+  ev: SyncodeParserEvidence | null | undefined
+): { label: string; provenanceNote: string } {
+  if (!ev) {
+    return { label: "Unavailable", provenanceNote: "Unavailable" };
+  }
+  if (
+    typeof ev.core_lookahead_k === "number" &&
+    ev.core_lookahead_unit === "grammar_terminals"
+  ) {
+    const note = semanticsProvenanceLabel(ev.semantics_provenance ?? null);
+    return {
+      label: `k=${ev.core_lookahead_k} grammar terminals`,
+      provenanceNote: note,
+    };
+  }
+  if (
+    typeof ev.core_lookahead_k === "number" &&
+    ev.core_lookahead_unit
+  ) {
+    return {
+      label: `k=${ev.core_lookahead_k} ${ev.core_lookahead_unit}`,
+      provenanceNote: semanticsProvenanceLabel(ev.semantics_provenance ?? null),
+    };
+  }
+  const ver = (ev.syncode_version || "").trim();
+  if (ver === "0.4.16" || ver.startsWith("0.4.16")) {
+    return {
+      label: "k=2 grammar terminals",
+      provenanceNote: "Derived from SynCode 0.4.16",
+    };
+  }
+  return { label: "Unavailable", provenanceNote: "Unavailable" };
+}
+
+export function ignoreTerminalsDisplay(
+  terminals: string[] | null | undefined
+): string {
+  if (terminals == null) return "Unavailable";
+  if (terminals.length === 0) return "(none recorded)";
+  return terminals.join(", ");
 }
 
 export function formatRemainderDisplay(
@@ -226,7 +330,7 @@ export function formatSyncodeParserEvidenceReport(
   }
 ): string {
   const lines: string[] = [];
-  const heading = options?.heading ?? "SynCode incremental parser";
+  const heading = options?.heading ?? "SynCode terminal accept paths";
   lines.push(heading);
   lines.push("-".repeat(heading.length));
 

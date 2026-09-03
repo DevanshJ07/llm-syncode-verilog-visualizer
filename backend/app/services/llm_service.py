@@ -55,6 +55,7 @@ from app.models.syncode_parser_evidence import (
     unavailable_syncode_parser_evidence,
 )
 from app.services.syncode_parser_evidence import (
+    extract_parser_terminal_sets,
     format_legacy_accept_sequences,
     serialize_parse_result,
     syncode_package_version,
@@ -491,6 +492,7 @@ class _SyncodeConstraint:
                         and not partial_str.startswith("<get_partial_outputs failed")
                         else None
                     )
+                    term_sets = extract_parser_terminal_sets(ge.inc_parser)
                     evidence = serialize_parse_result(
                         res,
                         mask_call_index=step,
@@ -501,6 +503,11 @@ class _SyncodeConstraint:
                         syncode_tokenizer_eos_token_id=_syn_eos_id,
                         application_eos_token_ids=_app_eos_ids,
                         origin="live_mask_runtime",
+                        current_accept_terminals=term_sets[
+                            "current_accept_terminals"
+                        ],
+                        next_accept_terminals=term_sets["next_accept_terminals"],
+                        ignore_terminals=term_sets["ignore_terminals"],
                     )
                     _structured_evidence.append(evidence)
                 except Exception as _cap_exc:

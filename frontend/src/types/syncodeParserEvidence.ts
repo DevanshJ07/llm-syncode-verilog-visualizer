@@ -1,11 +1,17 @@
 /**
  * TypeScript mirrors of backend/app/models/syncode_parser_evidence.py
- * (Phase 4A.1 / 4A.2). Keep in sync with the committed Pydantic models.
+ * (Phase 4A.1 / 4A.2 / Checkpoint 1 semantics). Keep in sync with the
+ * committed Pydantic models.
  *
  * Do not conflate:
  *   status  — available | unavailable | failed (legacy "recorded" → available)
  *   origin  — where the ParseResult came from
  *   Prov.kind — Recorded / Recomputed / Unavailable / Derived (outer wrapper)
+ *   semantics_provenance — how core_lookahead_k / construction metadata was set
+ *
+ * Accept sequences are grammar-terminal paths (core k=2 in SynCode 0.4.16),
+ * not LLM tokenizer-token sequences.  stored/total counts are sequence-count
+ * truncation, not k.
  */
 
 export type SyncodeParserEvidenceStatus =
@@ -29,8 +35,26 @@ export type RemainderStateName =
 
 export type RemainderKind = "text" | "bytes_hex" | "empty" | "unavailable";
 
+export type SemanticsProvenance =
+  | "recorded"
+  | "recomputed"
+  | "derived_from_version"
+  | "unavailable";
+
+export type AcceptSequenceConstructionKind =
+  | "current_terminal"
+  | "next_terminal"
+  | "final_then_next"
+  | "final_ignore_next"
+  | "ignore_only"
+  | "unknown";
+
 export interface AcceptSequenceRecord {
   terminals: string[];
+  /** Present on newly serialized evidence; absent on historical payloads. */
+  displayed_terminal_count?: number | null;
+  construction_kind?: AcceptSequenceConstructionKind | null;
+  contains_ignored_terminal?: boolean | null;
 }
 
 export interface RemainderRepresentation {
@@ -67,6 +91,14 @@ export interface SyncodeParserEvidence {
   remainder: RemainderRepresentation;
   function_end?: boolean | null;
   grammar_end_marker_present: boolean;
+  /** SynCode 0.4.16 effective core lookahead (grammar terminals). Optional. */
+  core_lookahead_k?: number | null;
+  core_lookahead_unit?: string | null;
+  sequence_construction?: string | null;
+  current_accept_terminals?: string[] | null;
+  next_accept_terminals?: string[] | null;
+  ignore_terminals?: string[] | null;
+  semantics_provenance?: SemanticsProvenance | null;
   mask_eos_observation?: MaskEosObservation | null;
   warnings: string[];
   error: string;

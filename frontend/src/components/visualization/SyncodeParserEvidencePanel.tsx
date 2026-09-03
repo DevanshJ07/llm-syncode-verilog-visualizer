@@ -16,13 +16,17 @@ import { cn } from "@/lib/utils";
 import type { UiAppearance } from "@/lib/researchAppearance";
 import {
   compareSyncodeEvidence,
+  constructionKindLabel,
+  coreLookaheadDisplay,
   eosAllowedLabel,
   evidenceOriginLabel,
   evidenceStatusLabel,
   evidenceTimingLabel,
   formatAcceptSequenceTerminals,
   formatRemainderDisplay,
+  ignoreTerminalsDisplay,
   remainderStateExplanation,
+  remainderStateLabel,
   resolveDisplayProvenance,
   shouldShowEosMaskSection,
 } from "@/lib/syncodeParserEvidenceDisplay";
@@ -123,7 +127,7 @@ export function SyncodeParserEvidencePanel({
   evidence,
   provenanceKind,
   grammarSha256,
-  heading = "SynCode incremental parser",
+  heading = "SynCode terminal accept paths",
   context = "live",
   legacyAcceptSequences,
   className,
@@ -215,8 +219,12 @@ export function SyncodeParserEvidencePanel({
       </div>
 
       <p className={cn(bodySecondary, "leading-relaxed")}>
-        SynCode sequences describe terminal paths used for DFA mask construction.
-        They are not Lark expected terminals and not tokenizer vocabulary tokens.
+        These are grammar-terminal paths computed before the selected LLM token.
+        SynCode tests the lexical remainder plus each candidate tokenizer token
+        against these paths. They are not LLM-token sequences.
+      </p>
+      <p className={cn(bodyMuted, "leading-relaxed")}>
+        Parser-derived expected terminals are not SynCode accept sequences.
       </p>
 
       {ev.origin === "import_recomputed_parser_only" && (
@@ -228,28 +236,99 @@ export function SyncodeParserEvidencePanel({
               : "border-[#a371f7]/30 bg-[#a371f7]/10 text-[#d2a8ff]"
           )}
         >
-          Recomputed with the current canonical grammar and SynCode parser. This
-          is not the original runtime token mask.
+          Recomputed using the current canonical grammar and SynCode incremental
+          parser. This does not replay the original model-tokenizer mask.
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
-        <MetaChip label="Provenance" value={provenanceLabel(prov)} research={research} />
-        <MetaChip label="Origin" value={evidenceOriginLabel(ev.origin)} research={research} />
-        <MetaChip
-          label="Timing"
-          value={evidenceTimingLabel(ev.evidence_timing)}
-          research={research}
-        />
-        <MetaChip
-          label="SynCode version"
-          value={ev.syncode_version || "Unavailable"}
-          research={research}
-        />
-        {grammarSha256 ? (
-          <MetaChip label="Grammar SHA-256" value={grammarSha256} research={research} />
-        ) : null}
-      </div>
+      {(() => {
+        const core = coreLookaheadDisplay(ev);
+        const remEscaped =
+          rem.unavailable
+            ? "Unavailable"
+            : rem.emptyDistinct
+              ? '(empty) ""'
+              : rem.textDisplay;
+        return (
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
+            <MetaChip
+              label="Timing"
+              value={evidenceTimingLabel(ev.evidence_timing)}
+              research={research}
+            />
+            <MetaChip
+              label="Core lookahead"
+              value={
+                core.provenanceNote === "Unavailable" &&
+                core.label === "Unavailable"
+                  ? "Unavailable"
+                  : `${core.label} (${core.provenanceNote})`
+              }
+              research={research}
+            />
+            <MetaChip
+              label="Lexical remainder"
+              value={remEscaped}
+              research={research}
+            />
+            <MetaChip
+              label="Remainder state"
+              value={remainderStateLabel(ev.remainder_state)}
+              research={research}
+            />
+            <MetaChip
+              label="Ignore terminals"
+              value={ignoreTerminalsDisplay(ev.ignore_terminals)}
+              research={research}
+            />
+            <MetaChip
+              label="Stored paths"
+              value={String(ev.accept_sequence_count_stored)}
+              research={research}
+            />
+            <MetaChip
+              label="Total paths"
+              value={String(ev.accept_sequence_count_total)}
+              research={research}
+            />
+            <MetaChip
+              label="Truncated"
+              value={ev.accept_sequences_truncated ? "Yes" : "No"}
+              research={research}
+              warn={ev.accept_sequences_truncated}
+            />
+            <MetaChip
+              label="Provenance"
+              value={provenanceLabel(prov)}
+              research={research}
+            />
+            <MetaChip
+              label="Origin"
+              value={evidenceOriginLabel(ev.origin)}
+              research={research}
+            />
+            <MetaChip
+              label="SynCode version"
+              value={ev.syncode_version || "Unavailable"}
+              research={research}
+            />
+            {grammarSha256 ? (
+              <MetaChip
+                label="Grammar SHA-256"
+                value={grammarSha256}
+                research={research}
+              />
+            ) : null}
+          </div>
+        );
+      })()}
+
+      <p className={cn(bodyMuted, "leading-relaxed")}>
+        Core lookahead <code className="font-mono">k</code> counts grammar
+        terminals (SynCode 0.4.16: k=2). A length-3 path is final → ignored →
+        next and does not mean k=3. Stored/total path counts are storage
+        truncation, not k.
+      </p>
 
       {status === "failed" && (
         <div
@@ -285,16 +364,19 @@ export function SyncodeParserEvidencePanel({
           {/* Accept sequences */}
           <div className="flex flex-col gap-1.5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className={sectionHeading}>Accept sequences</p>
+              <p className={sectionHeading}>Terminal accept paths</p>
               <p className={metaMuted}>
-                stored {ev.accept_sequence_count_stored} / total{" "}
+                stored paths {ev.accept_sequence_count_stored} / total paths{" "}
                 {ev.accept_sequence_count_total}
                 {ev.accept_sequences_truncated ? " · truncated" : ""}
+                {" · "}
+                not core k
               </p>
             </div>
             <p className={bodySecondary}>
-              Each row is one terminal sequence that SynCode&apos;s incremental
-              parser considered acceptable from this prefix.
+              Each row is one grammar-terminal path used for DFA mask
+              construction from the lexically fixed prefix (before the selected
+              LLM token). Path length is not LLM-token length and is not core k.
             </p>
             {ev.accept_sequences_truncated && (
               <p
@@ -334,36 +416,65 @@ export function SyncodeParserEvidencePanel({
                     research ? "divide-[#334155]" : "divide-[#21262d]"
                   )}
                 >
-                  {visibleSequences.map((seq, i) => (
-                    <li
-                      key={i}
-                      className={cn(
-                        "flex gap-2 border-[#334155] px-2.5 py-1.5",
-                        research
-                          ? i % 2 === 0
-                            ? "bg-[#0b1220]"
-                            : "bg-[#111827]"
-                          : undefined
-                      )}
-                    >
-                      <span
+                  {visibleSequences.map((seq, i) => {
+                    const kind = seq.construction_kind;
+                    const ignored =
+                      seq.contains_ignored_terminal === true ||
+                      kind === "final_ignore_next" ||
+                      kind === "ignore_only";
+                    const termCount =
+                      typeof seq.displayed_terminal_count === "number"
+                        ? seq.displayed_terminal_count
+                        : (seq.terminals ?? []).length;
+                    return (
+                      <li
+                        key={i}
                         className={cn(
-                          "shrink-0 font-mono",
-                          research ? "text-[#94a3b8]" : "text-[#484f58]"
+                          "flex flex-col gap-0.5 border-[#334155] px-2.5 py-1.5",
+                          research
+                            ? i % 2 === 0
+                              ? "bg-[#0b1220]"
+                              : "bg-[#111827]"
+                            : undefined,
+                          ignored &&
+                            (research
+                              ? "outline outline-1 outline-amber-400/40"
+                              : "outline outline-1 outline-[#d29922]/35")
                         )}
                       >
-                        {i + 1}.
-                      </span>
-                      <span
-                        className={cn(
-                          "break-all font-mono",
-                          research ? "text-blue-300" : "text-[#58a6ff]"
-                        )}
-                      >
-                        {formatAcceptSequenceTerminals(seq.terminals ?? [])}
-                      </span>
-                    </li>
-                  ))}
+                        <div className="flex gap-2">
+                          <span
+                            className={cn(
+                              "shrink-0 font-mono",
+                              research ? "text-[#94a3b8]" : "text-[#484f58]"
+                            )}
+                          >
+                            {i + 1}.
+                          </span>
+                          <span
+                            className={cn(
+                              "break-all font-mono",
+                              research ? "text-blue-300" : "text-[#58a6ff]"
+                            )}
+                          >
+                            {formatAcceptSequenceTerminals(seq.terminals ?? [])}
+                          </span>
+                        </div>
+                        <p
+                          className={cn(
+                            "pl-5 font-mono text-[10px]",
+                            research ? "text-[#94a3b8]" : "text-[#484f58]"
+                          )}
+                        >
+                          terminals={termCount}
+                          {kind != null
+                            ? ` · ${constructionKindLabel(kind)}`
+                            : " · classification Unavailable"}
+                          {ignored ? " · includes ignored terminal" : ""}
+                        </p>
+                      </li>
+                    );
+                  })}
                 </ol>
               </div>
             )}
@@ -388,7 +499,7 @@ export function SyncodeParserEvidencePanel({
           <div className="flex flex-col gap-1.5">
             <p className={sectionHeading}>Remainder state</p>
             <p className={remainderStateValueClass(ev.remainder_state, research)}>
-              {ev.remainder_state ?? "Unavailable"}
+              {remainderStateLabel(ev.remainder_state)}
             </p>
             {ev.remainder_state && (
               <p className={bodySecondary}>
@@ -734,7 +845,7 @@ export function ImportedSyncodeParserEvidenceSection({
           heading={
             primaryIsRecomputed
               ? "Current SynViz recomputation"
-              : "SynCode incremental parser (primary)"
+              : "SynCode terminal accept paths (primary)"
           }
           context="imported"
           appearance={appearance}
@@ -826,7 +937,7 @@ export function ImportedSyncodeParserEvidenceSection({
       evidence={primaryEv}
       provenanceKind={primary!.provenance.kind}
       grammarSha256={primary!.provenance.grammar_sha256}
-      heading="SynCode incremental parser"
+      heading="SynCode terminal accept paths"
       context="imported"
       className={className}
       appearance={appearance}

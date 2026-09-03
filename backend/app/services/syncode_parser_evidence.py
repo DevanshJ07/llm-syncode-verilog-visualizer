@@ -25,6 +25,7 @@ from app.models.syncode_parser_evidence import (
     AcceptSequenceRecord,
     MaskEosObservation,
     RemainderRepresentation,
+    SemanticsProvenance,
     SyncodeParserEvidence,
     failed_syncode_parser_evidence,
     unavailable_syncode_parser_evidence,
@@ -33,6 +34,187 @@ from app.models.syncode_parser_evidence import (
 log = logging.getLogger(__name__)
 
 GRAMMAR_END_TERMINALS = frozenset({"$END", "EOF"})
+
+# Identifies the SynCode 0.4.16 construction rule used for new evidence.
+SEQUENCE_CONSTRUCTION_SYNCODE_0416 = (
+    "syncode.ParseResult.from_accept_terminals@0.4.16"
+)
+CORE_LOOKAHEAD_K_SYNCODE_0416 = 2
+CORE_LOOKAHEAD_UNIT = "grammar_terminals"
+
+
+def is_syncode_0416_version(version: str | None) -> bool:
+    """True when *version* identifies the verified SynCode 0.4.16 line."""
+    if not version:
+        return False
+    v = str(version).strip()
+    return v == "0.4.16" or v.startswith("0.4.16")
+
+
+def _sorted_unique_names(raw: Any) -> Optional[list[str]]:
+    """Deterministic sorted unique terminal-name list, or None if absent."""
+    if raw is None:
+        return None
+    try:
+        items = [str(t) for t in list(raw)]
+    except TypeError:
+        return None
+    return sorted(set(items))
+
+
+def classify_accept_sequence(
+    terminals: Sequence[str],
+    *,
+    remainder_state: str | None,
+    ignore_terminals: Sequence[str] | None = None,
+    current_accept_terminals: Sequence[str] | None = None,
+    next_accept_terminals: Sequence[str] | None = None,
+) -> tuple[str, bool]:
+    """
+    Classify one AcceptSequence under SynCode 0.4.16 ``from_accept_terminals``.
+
+    Returns ``(construction_kind, contains_ignored_terminal)``.
+    Prefers ``unknown`` when length alone would be ambiguous.
+    """
+    terms = [str(t) for t in terminals]
+    n = len(terms)
+    ignore_set = set(ignore_terminals or [])
+    cur_set = set(current_accept_terminals) if current_accept_terminals is not None else None
+    next_set = set(next_accept_terminals) if next_accept_terminals is not None else None
+    rem = remainder_state
+
+    def _has_ignore(ts: list[str]) -> bool:
+        return any(t in ignore_set for t in ts) if ignore_set else False
+
+    # Length 3 is produced only by MAYBE_COMPLETE ignore intercalation:
+    # [final_terminal, tignore, t2].
+    if n == 3 and rem == "MAYBE_COMPLETE":
+        mid_ignored = (not ignore_set) or (terms[1] in ignore_set)
+        if mid_ignored:
+            return "final_ignore_next", True
+        return "unknown", _has_ignore(terms)
+
+    if n == 2 and rem == "MAYBE_COMPLETE":
+        return "final_then_next", _has_ignore(terms)
+
+    if n == 1:
+        t0 = terms[0]
+        in_ignore = bool(ignore_set) and t0 in ignore_set
+        in_next = next_set is not None and t0 in next_set
+        in_cur = cur_set is not None and t0 in cur_set
+
+        if rem == "COMPLETE":
+            if in_ignore and not in_next:
+                return "ignore_only", True
+            if in_next and not in_ignore:
+                return "next_terminal", False
+            if in_next and in_ignore:
+                # Ambiguous membership — do not fabricate.
+                return "unknown", True
+            if next_set is not None or ignore_set:
+                # Sets present but terminal matched neither → unknown.
+                return "unknown", in_ignore
+            return "unknown", False
+
+        if rem == "INCOMPLETE":
+            if in_ignore and not in_cur:
+                return "ignore_only", True
+            if in_cur and not in_ignore:
+                return "current_terminal", False
+            if in_cur and in_ignore:
+                return "unknown", True
+            if cur_set is not None or ignore_set:
+                return "unknown", in_ignore
+            return "unknown", False
+
+        if rem == "MAYBE_COMPLETE":
+            # Length-1 paths: ignore-only, or other cur terminals (≠ final).
+            if in_ignore and not in_cur:
+                return "ignore_only", True
+            if in_cur and not in_ignore:
+                return "current_terminal", False
+            if in_ignore and in_cur:
+                return "unknown", True
+            if cur_set is not None or ignore_set:
+                return "unknown", in_ignore
+            return "unknown", False
+
+        # Remainder state missing — only ignore-only is safe when exclusive.
+        if in_ignore and not in_cur and not in_next:
+            return "ignore_only", True
+        return "unknown", in_ignore
+
+    # Empty sequence or unexpected lengths without a clear rule.
+    return "unknown", _has_ignore(terms)
+
+
+def apply_sequence_classifications(
+    records: list[AcceptSequenceRecord],
+    *,
+    remainder_state: str | None,
+    ignore_terminals: Sequence[str] | None = None,
+    current_accept_terminals: Sequence[str] | None = None,
+    next_accept_terminals: Sequence[str] | None = None,
+) -> list[AcceptSequenceRecord]:
+    """Attach classification metadata to newly built AcceptSequenceRecords."""
+    out: list[AcceptSequenceRecord] = []
+    for rec in records:
+        terms = list(rec.terminals)
+        kind, has_ignore = classify_accept_sequence(
+            terms,
+            remainder_state=remainder_state,
+            ignore_terminals=ignore_terminals,
+            current_accept_terminals=current_accept_terminals,
+            next_accept_terminals=next_accept_terminals,
+        )
+        out.append(
+            AcceptSequenceRecord(
+                terminals=terms,
+                displayed_terminal_count=len(terms),
+                construction_kind=kind,  # type: ignore[arg-type]
+                contains_ignored_terminal=has_ignore,
+            )
+        )
+    return out
+
+
+def semantics_fields_for_new_evidence(
+    *,
+    syncode_version: str,
+    origin: str,
+) -> dict[str, Any]:
+    """
+    Core-k / construction metadata for newly serialized evidence.
+
+    Only filled when the verified SynCode 0.4.16 construction is in use.
+    Historical loads must leave these fields absent (None).
+    """
+    if not is_syncode_0416_version(syncode_version):
+        return {
+            "core_lookahead_k": None,
+            "core_lookahead_unit": None,
+            "sequence_construction": None,
+            "semantics_provenance": None,
+        }
+
+    sem: SemanticsProvenance
+    if origin == "live_mask_runtime":
+        sem = "recorded"
+    elif origin == "import_recomputed_parser_only":
+        sem = "recomputed"
+    elif origin == "import_recorded_bundle":
+        # Bundle-carried evidence may predate these fields; do not invent
+        # recorded semantics here — caller should leave unset for old bundles.
+        sem = "recorded"
+    else:
+        sem = "unavailable"
+
+    return {
+        "core_lookahead_k": CORE_LOOKAHEAD_K_SYNCODE_0416,
+        "core_lookahead_unit": CORE_LOOKAHEAD_UNIT,
+        "sequence_construction": SEQUENCE_CONSTRUCTION_SYNCODE_0416,
+        "semantics_provenance": sem,
+    }
 
 
 def _max_sequences() -> int:
@@ -318,6 +500,9 @@ def serialize_parse_result(
     application_eos_token_ids: Sequence[int] | None = None,
     extra_warnings: Sequence[str] | None = None,
     origin: str = "live_mask_runtime",
+    current_accept_terminals: Sequence[str] | None = None,
+    next_accept_terminals: Sequence[str] | None = None,
+    ignore_terminals: Sequence[str] | None = None,
 ) -> SyncodeParserEvidence:
     """
     Build SyncodeParserEvidence from a ParseResult (live or recomputed).
@@ -326,6 +511,11 @@ def serialize_parse_result(
     ``origin="live_mask_runtime"``.  For import recomputation, use
     ``origin="import_recomputed_parser_only"`` and leave ``accept_mask`` /
     ``mask_call_index`` unset.
+
+    Optional ``current_accept_terminals`` / ``next_accept_terminals`` /
+    ``ignore_terminals`` improve sequence classification when captured from the
+    IncrementalParser at the same moment as the ParseResult.  They are stored
+    as sorted unique lists when provided.
     """
     from app.models.syncode_parser_evidence import EvidenceOrigin  # noqa: PLC0415
 
@@ -379,6 +569,23 @@ def serialize_parse_result(
                 application_eos_token_ids=application_eos_token_ids,
             )
 
+        cur_terms = _sorted_unique_names(current_accept_terminals)
+        next_terms = _sorted_unique_names(next_accept_terminals)
+        ignore_terms = _sorted_unique_names(ignore_terminals)
+
+        records = apply_sequence_classifications(
+            records,
+            remainder_state=rem_state,
+            ignore_terminals=ignore_terms,
+            current_accept_terminals=cur_terms,
+            next_accept_terminals=next_terms,
+        )
+
+        sem = semantics_fields_for_new_evidence(
+            syncode_version=version,
+            origin=origin_val,
+        )
+
         return SyncodeParserEvidence(
             status="available",
             origin=origin_val,
@@ -396,6 +603,13 @@ def serialize_parse_result(
             remainder=remainder,
             function_end=function_end,
             grammar_end_marker_present=grammar_end,
+            core_lookahead_k=sem["core_lookahead_k"],
+            core_lookahead_unit=sem["core_lookahead_unit"],
+            sequence_construction=sem["sequence_construction"],
+            current_accept_terminals=cur_terms,
+            next_accept_terminals=next_terms,
+            ignore_terminals=ignore_terms,
+            semantics_provenance=sem["semantics_provenance"],
             mask_eos_observation=eos_obs,
             warnings=warnings,
             error="",
@@ -432,6 +646,29 @@ def format_legacy_accept_sequences(
     for rec in evidence.accept_sequences[:max_entries]:
         out.append(f"accept_terminals: {tuple(rec.terminals)!s}")
     return out
+
+
+def extract_parser_terminal_sets(inc_parser: Any) -> dict[str, Optional[list[str]]]:
+    """
+    Read cur/next/ignore terminal name sets from a SynCode IncrementalParser.
+
+    Best-effort only — returns None values when attributes are absent.
+    Does not mutate the parser.
+    """
+    cur = _sorted_unique_names(getattr(inc_parser, "cur_ac_terminals", None))
+    nxt = _sorted_unique_names(getattr(inc_parser, "next_ac_terminals", None))
+    ignore = None
+    try:
+        base = getattr(inc_parser, "base_parser", None)
+        lexer_conf = getattr(base, "lexer_conf", None) if base is not None else None
+        ignore = _sorted_unique_names(getattr(lexer_conf, "ignore", None))
+    except Exception:
+        ignore = None
+    return {
+        "current_accept_terminals": cur,
+        "next_accept_terminals": nxt,
+        "ignore_terminals": ignore,
+    }
 
 
 def wrap_get_accept_mask(

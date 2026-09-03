@@ -51,6 +51,7 @@ from app.models.syncode_parser_evidence import (
     unavailable_syncode_parser_evidence,
 )
 from app.services.syncode_parser_evidence import (
+    extract_parser_terminal_sets,
     serialize_parse_result,
     syncode_package_version,
 )
@@ -245,6 +246,7 @@ def recompute_syncode_parser_evidence_for_steps(
         try:
             inc_parser.reset()
             parse_result = inc_parser.get_acceptable_next_terminals(prefix)
+            term_sets = extract_parser_terminal_sets(inc_parser)
             evidence = serialize_parse_result(
                 parse_result,
                 mask_call_index=None,  # must not imply a live mask call
@@ -254,6 +256,9 @@ def recompute_syncode_parser_evidence_for_steps(
                 accept_mask=None,
                 extra_warnings=step_warnings,
                 origin="import_recomputed_parser_only",
+                current_accept_terminals=term_sets["current_accept_terminals"],
+                next_accept_terminals=term_sets["next_accept_terminals"],
+                ignore_terminals=term_sets["ignore_terminals"],
             )
             # Defence: never attach mask EOS observation for recompute.
             if evidence.mask_eos_observation is not None:

@@ -334,7 +334,7 @@ export function StepViewer({
   step,
   mode,
   hideSyncodeEvidence = false,
-  syncodeEvidenceHeading = "SynCode incremental parser",
+  syncodeEvidenceHeading = "SynCode terminal accept paths",
 }: Props) {
   // Show syncode panels when:
   //  • the experiment was run in syncode mode (mode prop), OR

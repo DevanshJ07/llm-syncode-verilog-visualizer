@@ -276,7 +276,7 @@ export default function ExperimentPage() {
         {!syncodeActive ? (
           <div className="flex flex-col gap-2 rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2">
             <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]">
-              SynCode Accept Sequences — Unavailable
+              SynCode terminal accept paths — Unavailable
             </h3>
             <p className="text-[11px] text-[#484f58]">
               SynCode was not active for this generation (open / unconstrained mode).
@@ -292,7 +292,7 @@ export default function ExperimentPage() {
                 : undefined
             }
             context="live"
-            heading="SynCode Accept Sequences"
+            heading="SynCode terminal accept paths"
             legacyAcceptSequences={
               isStructurallyAvailable(selectedStep?.syncode_parser_evidence)
                 ? undefined
