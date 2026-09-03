@@ -15,6 +15,8 @@ import Link from "next/link";
 import { CodeViewer } from "@/components/output/CodeViewer";
 import { OutputAtStep } from "@/components/output/OutputAtStep";
 import { DecodingTimeline } from "@/components/visualization/DecodingTimeline";
+import { LosslessParserAnalysisViewer } from "@/components/visualization/LosslessParserAnalysisViewer";
+import { ParserAtStepPanel } from "@/components/visualization/ParserAtStepPanel";
 import { ParserTreeExportPanel } from "@/components/visualization/ParserTreeExportPanel";
 import { StepPlayer } from "@/components/visualization/StepPlayer";
 import { StepViewer } from "@/components/visualization/StepViewer";
@@ -22,10 +24,11 @@ import { SyncodeParserEvidencePanel } from "@/components/visualization/SyncodePa
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
-import { getExperiment } from "@/lib/api";
+import { getExperiment, getLiveFinalParserAnalysis } from "@/lib/api";
 import { reconstructLiveOutputAtStep } from "@/lib/liveOutputAtStep";
 import { formatDate, formatPct } from "@/lib/utils";
 import type { ExperimentResult } from "@/types/decoding";
+import type { LosslessParserAnalysisResponse } from "@/types/losslessParserAnalysis";
 import { isStructurallyAvailable } from "@/types/syncodeParserEvidence";
 
 function experimentUsedSyncode(experiment: ExperimentResult): boolean {
@@ -48,6 +51,13 @@ export default function ExperimentPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playIntervalMs, setPlayIntervalMs] = useState(1000);
 
+  const [finalLossless, setFinalLossless] =
+    useState<LosslessParserAnalysisResponse | null>(null);
+  const [finalLosslessLoading, setFinalLosslessLoading] = useState(false);
+  const [finalLosslessError, setFinalLosslessError] = useState<string | null>(
+    null
+  );
+
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -55,11 +65,43 @@ export default function ExperimentPage() {
     setExperiment(null);
     setCurrentStep(0);
     setIsPlaying(false);
+    setFinalLossless(null);
+    setFinalLosslessError(null);
     getExperiment(id)
       .then(setExperiment)
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!experiment?.experiment_id) return;
+    const controller = new AbortController();
+    setFinalLosslessLoading(true);
+    setFinalLosslessError(null);
+    setFinalLossless(null);
+    getLiveFinalParserAnalysis(experiment.experiment_id, controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setFinalLossless(data);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        if (
+          err instanceof Error &&
+          (err.name === "AbortError" || /aborted/i.test(err.message))
+        ) {
+          return;
+        }
+        setFinalLossless(null);
+        setFinalLosslessError(
+          err instanceof Error ? err.message : String(err ?? "Request failed")
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFinalLosslessLoading(false);
+      });
+    return () => controller.abort();
+  }, [experiment?.experiment_id]);
 
   const steps = useMemo(
     () => experiment?.steps ?? [],
@@ -302,6 +344,15 @@ export default function ExperimentPage() {
         )}
       </section>
 
+      {/* Lossless parser at the same selected step */}
+      {stepCount > 0 && (
+        <ParserAtStepPanel
+          experimentId={experiment.experiment_id}
+          currentStep={currentStep}
+          mode="live"
+        />
+      )}
+
       {/* Final output + full timeline */}
       <div className="grid min-w-0 gap-5 lg:grid-cols-[1fr_1fr]">
         <section className="flex min-w-0 flex-col gap-2">
@@ -340,9 +391,27 @@ export default function ExperimentPage() {
             Parser-derived expected terminals are not SynCode accept sequences.
           </span>{" "}
           Per-step SynCode accept sequences (when recorded) are shown in the
-          selected-step section above.
+          selected-step section above. The lossless CST view is a separate
+          keep-all-tokens analysis of the same final source.
         </p>
         <ParserTreeExportPanel experiment={experiment} />
+        {finalLosslessLoading && (
+          <div className="flex justify-center py-6">
+            <Spinner size="md" label="Loading lossless final analysis…" />
+          </div>
+        )}
+        {finalLosslessError && !finalLosslessLoading && (
+          <p className="rounded-md border border-[#f85149]/40 bg-[#f85149]/10 px-3 py-2 text-sm text-[#f85149]">
+            {finalLosslessError}
+          </p>
+        )}
+        {!finalLosslessLoading && finalLossless && (
+          <LosslessParserAnalysisViewer
+            analysis={finalLossless}
+            context="live"
+            title="Lossless final parser analysis"
+          />
+        )}
       </section>
     </div>
   );

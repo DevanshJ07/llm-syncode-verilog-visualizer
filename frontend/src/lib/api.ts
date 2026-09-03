@@ -6,8 +6,12 @@
  *   - GET  /api/generate/jobs/[jobId]
  *   - POST /api/generate (sync compat)
  *   - GET  /api/experiment/[id]
+ *   - GET  /api/experiment/[id]/parser-analysis
+ *   - GET  /api/experiment/[id]/steps/[stepIndex]/parser-analysis
  *   - POST /api/import/bundle
  *   - GET  /api/imported-experiment/[id]
+ *   - GET  /api/imported-experiment/[id]/prompts/[promptId]/parser-analysis
+ *   - GET  /api/imported-experiment/[id]/prompts/[promptId]/steps/[stepIndex]/parser-analysis
  *
  * Components and hooks should import from here, never fetch() directly.
  */
@@ -19,6 +23,7 @@ import type {
   GenerateRequest,
   StepResponse,
 } from "@/types/decoding";
+import type { LosslessParserAnalysisResponse } from "@/types/losslessParserAnalysis";
 import type {
   ImportedExperimentCreatedResponse,
   ImportedExperimentSummary,
@@ -42,6 +47,11 @@ const IMPORT_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
 const IMPORT_DETAIL_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
 /** Live experiment detail (full decoding trace) via dedicated proxy. */
 const EXPERIMENT_DETAIL_CLIENT_TIMEOUT_MS = 10 * 60 * 1000;
+/**
+ * On-demand lossless parser analysis (CST + segments). Can be multi-MB and
+ * CPU-heavy; dedicated proxies use 10 min — client waits up to 5 min.
+ */
+const PARSER_ANALYSIS_CLIENT_TIMEOUT_MS = 5 * 60 * 1000;
 /** Parse FastAPI error bodies into a human-readable string. */
 export function formatApiError(status: number, body: string): string {
   try {
@@ -390,6 +400,64 @@ export async function getImportedExperiment(
     timeoutMs: IMPORT_DETAIL_CLIENT_TIMEOUT_MS,
   });
 }
+// ---------------------------------------------------------------------------
+// Lossless parser analysis (Checkpoint 2 — on-demand, not stored)
+// ---------------------------------------------------------------------------
+
+export async function getLiveStepParserAnalysis(
+  id: string,
+  stepIndex: number,
+  timing: "before" | "after",
+  signal?: AbortSignal
+): Promise<LosslessParserAnalysisResponse> {
+  const qs = new URLSearchParams({ timing });
+  return request<LosslessParserAnalysisResponse>(
+    `/experiment/${encodeURIComponent(id)}/steps/${encodeURIComponent(String(stepIndex))}/parser-analysis?${qs.toString()}`,
+    { signal },
+    { timeoutMs: PARSER_ANALYSIS_CLIENT_TIMEOUT_MS }
+  );
+}
+
+export async function getLiveFinalParserAnalysis(
+  id: string,
+  signal?: AbortSignal
+): Promise<LosslessParserAnalysisResponse> {
+  const qs = new URLSearchParams({ timing: "final_source" });
+  return request<LosslessParserAnalysisResponse>(
+    `/experiment/${encodeURIComponent(id)}/parser-analysis?${qs.toString()}`,
+    { signal },
+    { timeoutMs: PARSER_ANALYSIS_CLIENT_TIMEOUT_MS }
+  );
+}
+
+export async function getImportedStepParserAnalysis(
+  id: string,
+  promptId: string,
+  stepIndex: number,
+  timing: "before" | "after",
+  signal?: AbortSignal
+): Promise<LosslessParserAnalysisResponse> {
+  const qs = new URLSearchParams({ timing });
+  return request<LosslessParserAnalysisResponse>(
+    `/imported-experiment/${encodeURIComponent(id)}/prompts/${encodeURIComponent(promptId)}/steps/${encodeURIComponent(String(stepIndex))}/parser-analysis?${qs.toString()}`,
+    { signal },
+    { timeoutMs: PARSER_ANALYSIS_CLIENT_TIMEOUT_MS }
+  );
+}
+
+export async function getImportedFinalParserAnalysis(
+  id: string,
+  promptId: string,
+  signal?: AbortSignal
+): Promise<LosslessParserAnalysisResponse> {
+  const qs = new URLSearchParams({ timing: "final_source" });
+  return request<LosslessParserAnalysisResponse>(
+    `/imported-experiment/${encodeURIComponent(id)}/prompts/${encodeURIComponent(promptId)}/parser-analysis?${qs.toString()}`,
+    { signal },
+    { timeoutMs: PARSER_ANALYSIS_CLIENT_TIMEOUT_MS }
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------

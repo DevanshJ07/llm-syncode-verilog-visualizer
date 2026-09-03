@@ -11,9 +11,10 @@ Also mounted under ``/api`` when registered that way in ``main.py``.
 from __future__ import annotations
 
 import logging
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 
 from app.core.config import settings
+from app.models.lossless_parser_analysis import LosslessParserAnalysisResponse
 from app.models.normalized import (
     ImportedExperimentCreatedResponse,
     ImportedExperimentSummary,
@@ -205,3 +206,93 @@ async def get_imported_experiment(experiment_id: str) -> NormalizedExperiment:
             detail="imported experiment not found",
         )
     return experiment
+
+
+def _load_imported_or_404(experiment_id: str) -> NormalizedExperiment:
+    if not is_safe_experiment_id(experiment_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="malformed experiment id",
+        )
+    try:
+        experiment = imported_store.load(experiment_id)
+    except ImportedStoreError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_client_safe_detail(str(exc)),
+        ) from None
+    if experiment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="imported experiment not found",
+        )
+    return experiment
+
+
+@router.get(
+    "/imported-experiment/{experiment_id}/prompts/{prompt_id}/steps/{step_index}/parser-analysis",
+    response_model=LosslessParserAnalysisResponse,
+)
+async def get_imported_step_parser_analysis(
+    experiment_id: str,
+    prompt_id: str,
+    step_index: int,
+    timing: str = Query(
+        "before",
+        description=(
+            "before (default) | after. Zero-based step_index. "
+            "Source = concat(selected_token) for [0,i) or [0,i+1)."
+        ),
+    ),
+) -> LosslessParserAnalysisResponse:
+    """
+    On-demand lossless parser analysis for one imported decoding step.
+
+    ``step_index`` is zero-based. Default timing is before the selected token.
+    Does not mutate stored JSON; does not run generation/masking.
+    """
+    from app.services.lossless_parser_analysis_routes import (
+        analyze_imported_step,
+        find_imported_prompt,
+        parse_timing_query,
+    )
+
+    experiment = _load_imported_or_404(experiment_id)
+    prompt = find_imported_prompt(experiment, prompt_id)
+    parsed = parse_timing_query(timing)
+    return await analyze_imported_step(
+        experiment, prompt, step_index=step_index, timing=parsed
+    )
+
+
+@router.get(
+    "/imported-experiment/{experiment_id}/prompts/{prompt_id}/parser-analysis",
+    response_model=LosslessParserAnalysisResponse,
+)
+async def get_imported_final_parser_analysis(
+    experiment_id: str,
+    prompt_id: str,
+    timing: str = Query(
+        "final_source",
+        description="Must be final_source for this route.",
+    ),
+) -> LosslessParserAnalysisResponse:
+    """Lossless analysis of the prompt's authoritative final generated source."""
+    from app.services.lossless_parser_analysis_routes import (
+        analyze_imported_final,
+        find_imported_prompt,
+        parse_timing_query,
+    )
+
+    experiment = _load_imported_or_404(experiment_id)
+    prompt = find_imported_prompt(experiment, prompt_id)
+    parsed = parse_timing_query(timing)
+    if parsed != "final_source":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "use timing=final_source on this route, or the per-step "
+                "parser-analysis route for before/after"
+            ),
+        )
+    return await analyze_imported_final(experiment, prompt)

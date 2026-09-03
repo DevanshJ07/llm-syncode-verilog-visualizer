@@ -14,8 +14,12 @@ const nextConfig = {
    *   - src/app/api/generate/jobs/route.ts
    *   - src/app/api/generate/jobs/[jobId]/route.ts
    *   - src/app/api/experiment/[id]/route.ts
+   *   - src/app/api/experiment/[id]/parser-analysis/route.ts
+   *   - src/app/api/experiment/[id]/steps/[stepIndex]/parser-analysis/route.ts
    *   - src/app/api/import/bundle/route.ts
    *   - src/app/api/imported-experiment/[id]/route.ts
+   *   - src/app/api/imported-experiment/[id]/prompts/[promptId]/parser-analysis/route.ts
+   *   - src/app/api/imported-experiment/[id]/prompts/[promptId]/steps/[stepIndex]/parser-analysis/route.ts
    *
    * BACKEND_URL is environment-configured (default http://127.0.0.1:8000).
    */

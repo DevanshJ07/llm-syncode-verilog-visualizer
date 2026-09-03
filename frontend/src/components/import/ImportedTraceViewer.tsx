@@ -17,6 +17,7 @@ import { ImportedOutputAtStep } from "@/components/import/ImportedOutputAtStep";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ProvenanceValue } from "@/components/ui/ProvenanceValue";
+import { ParserAtStepPanel } from "@/components/visualization/ParserAtStepPanel";
 import { StepPlayer } from "@/components/visualization/StepPlayer";
 import { ImportedSyncodeParserEvidenceSection } from "@/components/visualization/SyncodeParserEvidencePanel";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ import { isUnavailable, provenanceLabel, type ProvenanceKind } from "@/types/pro
 export type TraceEvidenceTab =
   | "decision"
   | "syncode"
+  | "parser_at_step"
   | "tokenizer"
   | "prefix_lark"
   | "top_raw"
@@ -50,6 +52,7 @@ export type TraceEvidenceTab =
 const EVIDENCE_TABS: { id: TraceEvidenceTab; label: string }[] = [
   { id: "decision", label: "Decision" },
   { id: "syncode", label: "SynCode Parser" },
+  { id: "parser_at_step", label: "Parser at Step" },
   { id: "tokenizer", label: "Tokenizer Mask" },
   { id: "prefix_lark", label: "Prefix & Lark" },
   { id: "top_raw", label: "Top Raw Tokens" },
@@ -72,6 +75,8 @@ export interface ImportedTraceViewerProps {
    * Default true for standalone use.
    */
   showToolbar?: boolean;
+  /** Parent imported experiment id (UUID) for on-demand parser analysis. */
+  experimentId?: string;
 }
 
 function timelineMarkerClass(kind: string, active: boolean): string {
@@ -337,6 +342,7 @@ export function ImportedTraceViewer({
   evidenceTab,
   onEvidenceTabChange,
   showToolbar = true,
+  experimentId,
 }: ImportedTraceViewerProps) {
   const steps = prompt.steps;
 
@@ -605,6 +611,24 @@ export function ImportedTraceViewer({
                   primary={step.syncode_parser_evidence}
                   recordedSibling={step.syncode_parser_evidence_recorded}
                 />
+              )}
+
+              {evidenceTab === "parser_at_step" && (
+                experimentId ? (
+                  <ParserAtStepPanel
+                    experimentId={experimentId}
+                    currentStep={activeIndex}
+                    mode="imported"
+                    promptId={prompt.problem_id}
+                    appearance="research"
+                    showChrome={false}
+                  />
+                ) : (
+                  <p className="text-sm text-[#94a3b8]">
+                    Experiment id is required to load on-demand lossless parser
+                    analysis.
+                  </p>
+                )
               )}
 
               {evidenceTab === "tokenizer" && (

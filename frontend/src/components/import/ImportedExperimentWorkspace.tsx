@@ -21,9 +21,13 @@ import { CodeViewer } from "@/components/output/CodeViewer";
 import { AppearanceProvider } from "@/components/ui/AppearanceContext";
 import { Badge } from "@/components/ui/Badge";
 import { ProvenanceValue } from "@/components/ui/ProvenanceValue";
+import { Spinner } from "@/components/ui/Spinner";
+import { LosslessParserAnalysisViewer } from "@/components/visualization/LosslessParserAnalysisViewer";
 import { ParserAnalysisViewer } from "@/components/visualization/ParserAnalysisViewer";
+import { getImportedFinalParserAnalysis } from "@/lib/api";
 import { metaDictGet } from "@/lib/provenanceDisplay";
 import { cn, formatDate } from "@/lib/utils";
+import type { LosslessParserAnalysisResponse } from "@/types/losslessParserAnalysis";
 import type { NormalizedExperiment, NormalizedPromptResult } from "@/types/normalized";
 import { isUnavailable } from "@/types/provenance";
 
@@ -114,6 +118,13 @@ export function ImportedExperimentWorkspace({ experiment }: Props) {
   const [playIntervalMs, setPlayIntervalMs] = useState(1000);
   const [evidenceTab, setEvidenceTab] = useState<TraceEvidenceTab>("decision");
 
+  const [finalLossless, setFinalLossless] =
+    useState<LosslessParserAnalysisResponse | null>(null);
+  const [finalLosslessLoading, setFinalLosslessLoading] = useState(false);
+  const [finalLosslessError, setFinalLosslessError] = useState<string | null>(
+    null
+  );
+
   const prompt = useMemo(() => {
     if (experiment.prompt_results.length === 0) return null;
     const idx = Math.min(promptIndex, experiment.prompt_results.length - 1);
@@ -133,6 +144,45 @@ export function ImportedExperimentWorkspace({ experiment }: Props) {
     }
     setActiveIndex((i) => Math.min(i, prompt.steps.length - 1));
   }, [prompt?.steps.length, prompt]);
+
+  useEffect(() => {
+    if (!prompt?.problem_id || !experiment.experiment_id) {
+      setFinalLossless(null);
+      setFinalLosslessError(null);
+      setFinalLosslessLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setFinalLosslessLoading(true);
+    setFinalLosslessError(null);
+    setFinalLossless(null);
+    getImportedFinalParserAnalysis(
+      experiment.experiment_id,
+      prompt.problem_id,
+      controller.signal
+    )
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setFinalLossless(data);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        if (
+          err instanceof Error &&
+          (err.name === "AbortError" || /aborted/i.test(err.message))
+        ) {
+          return;
+        }
+        setFinalLossless(null);
+        setFinalLosslessError(
+          err instanceof Error ? err.message : String(err ?? "Request failed")
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFinalLosslessLoading(false);
+      });
+    return () => controller.abort();
+  }, [experiment.experiment_id, prompt?.problem_id]);
 
   const llm = experiment.llm_metadata;
   const decoding = experiment.decoding_metadata;
@@ -446,22 +496,58 @@ export function ImportedExperimentWorkspace({ experiment }: Props) {
                   )}
                 </section>
 
-                <section className="flex min-h-[min(50vh,28rem)] flex-col overflow-hidden rounded-md border border-[#334155] bg-[#111827] shadow-black/20 shadow-sm lg:min-h-[min(70vh,40rem)]">
-                  <div className="min-h-0 flex-1 overflow-y-auto">
-                    <ParserAnalysisViewer
-                      key={prompt.problem_id}
-                      analysis={
-                        isUnavailable(prompt.parser_analysis)
-                          ? null
-                          : prompt.parser_analysis?.value ?? null
-                      }
-                      context="imported"
-                      title="Structured parser analysis"
-                      compactDiagnostics
-                      className="h-full rounded-none border-0 shadow-none"
-                    />
-                  </div>
-                </section>
+                <div className="flex min-h-[min(50vh,28rem)] flex-col gap-3 lg:min-h-[min(70vh,40rem)]">
+                  <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[#334155] bg-[#111827] shadow-black/20 shadow-sm">
+                    <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+                      <ParserAnalysisViewer
+                        key={`structural-${prompt.problem_id}`}
+                        analysis={
+                          isUnavailable(prompt.parser_analysis)
+                            ? null
+                            : prompt.parser_analysis?.value ?? null
+                        }
+                        context="imported"
+                        title="Structured parser analysis"
+                        compactDiagnostics
+                        className="h-full rounded-none border-0 shadow-none"
+                      />
+                    </div>
+                  </section>
+                  <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[#334155] bg-[#111827] shadow-black/20 shadow-sm">
+                    <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-0">
+                      {finalLosslessLoading && (
+                        <div className="flex justify-center py-8">
+                          <Spinner
+                            size="md"
+                            label="Loading lossless final analysis…"
+                          />
+                        </div>
+                      )}
+                      {finalLosslessError && !finalLosslessLoading && (
+                        <p className="px-3 py-3 text-sm text-red-300">
+                          {finalLosslessError}
+                        </p>
+                      )}
+                      {!finalLosslessLoading && finalLossless && (
+                        <LosslessParserAnalysisViewer
+                          key={`lossless-${prompt.problem_id}`}
+                          analysis={finalLossless}
+                          context="imported"
+                          title="Lossless final parser analysis"
+                          appearance="research"
+                          className="h-full rounded-none border-0 shadow-none"
+                        />
+                      )}
+                      {!finalLosslessLoading &&
+                        !finalLosslessError &&
+                        !finalLossless && (
+                          <p className="px-3 py-3 text-sm text-[#94a3b8]">
+                            Lossless final analysis unavailable.
+                          </p>
+                        )}
+                    </div>
+                  </section>
+                </div>
               </div>
             )}
 
@@ -473,6 +559,7 @@ export function ImportedExperimentWorkspace({ experiment }: Props) {
               >
                 <ImportedTraceViewer
                   prompt={prompt}
+                  experimentId={experiment.experiment_id}
                   activeIndex={activeIndex}
                   onActiveIndexChange={setActiveIndex}
                   isPlaying={isPlaying}
