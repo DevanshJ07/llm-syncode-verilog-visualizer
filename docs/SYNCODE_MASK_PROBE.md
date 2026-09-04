@@ -75,6 +75,26 @@ Prefix reconstruction (zero-based step `i`):
 Detailed DFA byte-transition traces are **UNAVAILABLE** without unsupported
 private instrumentation. Final mask bits and verified attribution are mandatory.
 
+## Checkpoint 3D (based number / ``'h`` vs ``'ha``)
+
+Causal focus: SynCode ``ByteFSM.consume_prefix`` from a final NUMBER state after
+decimal remainder ``16``. Direct FSM walk for ``'h`` ends live/non-final with
+digit outs; ``consume_prefix`` returns the full token as remainder. ``'ha``
+reaches accept and is stored.
+
+Local fixtures under ``backend/research_cases/fixtures/``. Full-vocab Nemotron
+mask confirmation still requires an NSCC run (not part of the implementation
+checkpoint). Use ``run_number_causal_trace=True`` when wired.
+
+Conclusion scope (before NSCC):
+
+- ``minimal_control_conclusion`` =
+  ``verified_viable_nonfinal_number_state_discarded``
+- ``original_nemotron_conclusion`` =
+  ``awaiting_full_runtime_verification``
+- ``conclusion_scope`` = ``mixed_pending_nscc``
+- fixed-k remains ``UNAVAILABLE``
+
 ## Integrity notes
 
 - Fail-closed unless SynCode == 0.4.16 (explicit override recorded).

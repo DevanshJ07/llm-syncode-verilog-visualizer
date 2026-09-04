@@ -19,9 +19,110 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
     divergence: Optional[str] = None
     conclusion: RootCauseKind = "unresolved_internal_evidence_unavailable"
     causal_status = "unresolved"
+    minimal_control_conclusion: Optional[RootCauseKind] = None
+    original_nemotron_conclusion: Optional[RootCauseKind] = None
+    conclusion_scope = None
+
+    # Prefer Checkpoint 3D based-number causal when present and reliable.
+    if result.number_causal is not None:
+        from app.research.syncode_mask_probe_number_causal import (
+            conclude_from_number_causal,
+        )
+
+        c_conc, c_status, c_unresolved, scope = conclude_from_number_causal(
+            result.number_causal
+        )
+        conclusion = c_conc  # type: ignore[assignment]
+        causal_status = c_status
+        unresolved.extend(c_unresolved)
+        # Persist scoping on the causal evidence object for JSON reports.
+        result.number_causal.minimal_control_conclusion = scope.get(
+            "minimal_control_conclusion"
+        )
+        result.number_causal.original_nemotron_conclusion = scope.get(
+            "original_nemotron_conclusion"
+        )
+        result.number_causal.conclusion_scope = scope.get(  # type: ignore[assignment]
+            "conclusion_scope", "mixed_pending_nscc"
+        )
+        minimal_control_conclusion = scope.get(  # type: ignore[assignment]
+            "minimal_control_conclusion"
+        )
+        original_nemotron_conclusion = scope.get(  # type: ignore[assignment]
+            "original_nemotron_conclusion"
+        )
+        conclusion_scope = scope.get("conclusion_scope")
+        answers.append(
+            EvidenceItem(
+                claim="'h vs 'ha first differing NUMBER construction stage",
+                classification=(
+                    "VERIFIED" if c_status == "conclusive" else "UNAVAILABLE"
+                ),
+                detail=(
+                    f"field={result.number_causal.first_differing_field}; "
+                    f"reason={result.number_causal.first_differing_reason_code}; "
+                    f"{result.number_causal.first_differing_detail}"
+                ),
+            )
+        )
+        answers.append(
+            EvidenceItem(
+                claim="minimal_control_conclusion",
+                classification="VERIFIED"
+                if scope.get("minimal_control_conclusion", "").startswith("verified_")
+                else "UNAVAILABLE",
+                detail=str(scope.get("minimal_control_conclusion")),
+            )
+        )
+        answers.append(
+            EvidenceItem(
+                claim="original_nemotron_conclusion",
+                classification=(
+                    "VERIFIED"
+                    if scope.get("original_nemotron_conclusion", "").startswith(
+                        "verified_"
+                    )
+                    else "UNAVAILABLE"
+                ),
+                detail=(
+                    f"{scope.get('original_nemotron_conclusion')} "
+                    f"(scope={scope.get('conclusion_scope')})"
+                ),
+            )
+        )
+        if result.number_causal.first_differing_field:
+            divergence = (
+                f"{result.number_causal.first_differing_field}: "
+                f"{result.number_causal.first_differing_reason_code}"
+            )
+        nf = result.number_causal.number_fsm
+        if nf is not None:
+            answers.append(
+                EvidenceItem(
+                    claim="NUMBER FSM live non-final after 'h",
+                    classification=(
+                        "VERIFIED"
+                        if (
+                            nf.state_after_short_is_live is True
+                            and nf.state_after_short_is_final is False
+                        )
+                        else "CONTRADICTED"
+                        if nf.state_after_short_is_final is True
+                        else "UNAVAILABLE"
+                    ),
+                    detail=nf.detail or nf.classification,
+                )
+            )
+        answers.append(
+            EvidenceItem(
+                claim="fixed-k hypothesis independently tested",
+                classification=result.number_causal.fixed_k_status,
+                detail=result.number_causal.fixed_k_detail,
+            )
+        )
 
     # Prefer Checkpoint 3C causal differential when present and reliable.
-    if result.causal is not None:
+    elif result.causal is not None:
         from app.research.syncode_mask_probe_causal import conclude_from_causal
 
         c_conc, c_status, c_unresolved = conclude_from_causal(result.causal)
@@ -282,6 +383,9 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
         answers=answers,
         first_verified_divergence=divergence,
         supported_conclusion=conclusion,
+        minimal_control_conclusion=minimal_control_conclusion,
+        original_nemotron_conclusion=original_nemotron_conclusion,
+        conclusion_scope=conclusion_scope,  # type: ignore[arg-type]
         remaining_uncertainty=uncertainty,
         unresolved_reasons=unresolved,
         causal_conclusion_status=causal_status,  # type: ignore[arg-type]
@@ -299,7 +403,10 @@ def render_markdown_report(result: SyncodeMaskProbeResult) -> str:
         f"- report_status: `{result.report_status}` "
         f"(legacy mirror of execution_status when finished)",
         f"- causal_conclusion_status: `{result.causal_conclusion_status}`",
-        f"- supported_conclusion: `{result.supported_conclusion}`",
+        f"- supported_conclusion: `{rc.supported_conclusion}`",
+        f"- minimal_control_conclusion: `{rc.minimal_control_conclusion}`",
+        f"- original_nemotron_conclusion: `{rc.original_nemotron_conclusion}`",
+        f"- conclusion_scope: `{rc.conclusion_scope}`",
         f"- failure_stage: `{result.failure_stage}`",
         f"- SynCode: `{result.provenance.syncode_version}` "
         f"(override={result.provenance.syncode_version_override_used})",

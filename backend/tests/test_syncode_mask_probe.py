@@ -522,13 +522,15 @@ def test_templates_require_fill_placeholders():
     assert data["expected_decoded_candidates"]["1520"] == ",\n"
     p2 = BACKEND_ROOT / "research_cases" / "nemotron_base_literal_step65.template.json"
     data2 = json.loads(p2.read_text(encoding="utf-8"))
-    assert "<FILL" in data2["tokenizer_model_id"]
+    assert "<FILL" in data2["source_trace_path"]
+    assert data2["tokenizer_model_id"].startswith("nvidia/")
     assert data2["prompt_id"] == "Prob126_circuit6"
     assert data2["step_index"] == 65
     assert data2["raw_argmax_token_id"] == 6782
     assert data2["expected_decoded_candidates"]["6782"] == "'h"
     assert data2["selected_token_id"] == 56257
     assert data2["expected_decoded_candidates"]["56257"] == "'ha"
+    assert "<FILL" in data2["candidate_witness_suffixes"]["6782"]
 
 
 def test_backend_startup_does_not_load_research_package():

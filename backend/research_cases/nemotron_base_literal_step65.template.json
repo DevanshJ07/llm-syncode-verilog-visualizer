@@ -1,30 +1,43 @@
 {
   "case_id": "nemotron_base_literal_step65",
-  "description": "Nemotron Prob126_circuit6 step 65 — base literal around 16 / 'h vs 'ha. Fill NSCC fields before running; do not guess model IDs. Do not conclude why masking occurred from this template alone.",
-  "source_trace_path": "<FILL:original_NSCC_or_imported_trace.json>",
+  "description": "Nemotron Prob126_circuit6 step 65 — base literal 16 / 'h vs 'ha. Fill NSCC paths before running; do not guess. Do not conclude from the template alone.",
+  "source_trace_path": "<FILL:results/focused_four_nemotron_512/traces/Prob126_circuit6.json>",
   "prompt_id": "Prob126_circuit6",
   "step_index": 65,
   "step_index_unit": "zero_based",
   "prefix_source": "reconstructed_from_selected_tokens",
-  "candidate_token_ids": [6782, 56257],
+  "candidate_token_ids": [6782, 56257, 1039, 6813, 1104, 8490],
   "expected_decoded_candidates": {
     "6782": "'h",
-    "56257": "'ha"
+    "56257": "'ha",
+    "1039": "'",
+    "6813": "'d",
+    "1104": "h",
+    "8490": "'a"
   },
   "selected_token_id": 56257,
   "raw_argmax_token_id": 6782,
-  "witness_completion_suffix": "<FILL:completion_suffix_or_use_witness_source_file>",
+  "witness_completion_suffix": null,
+  "candidate_witness_suffixes": {
+    "6782": "<FILL:a + remainder_after_selected_'ha_to_complete_module>",
+    "56257": "<FILL:remainder_after_selected_'ha_to_complete_module>"
+  },
   "witness_source_file": null,
   "expected_grammar_sha256": "1d4dc2bccf39f3e591e3dc59834c1c17b33b3f27d00a7ddd8810c795510cc4ef",
-  "expected_tokenizer_model": "<FILL:exact_nemotron_tokenizer_model_id>",
-  "expected_tokenizer_revision": "<FILL:exact_revision>",
-  "tokenizer_model_id": "<FILL:exact_nemotron_tokenizer_model_id>",
-  "tokenizer_revision": "<FILL:exact_revision>",
-  "trust_remote_code": false,
+  "expected_tokenizer_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "expected_tokenizer_revision": "2d59de1cbd51c0adf384eb906b766d1aee0e0517",
+  "tokenizer_model_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "tokenizer_revision": "2d59de1cbd51c0adf384eb906b766d1aee0e0517",
+  "trust_remote_code": true,
   "parser_mode": "lalr",
   "mask_store_mode": "fresh_isolated",
-  "mask_store_cache_path": "<FILL:for_existing_cache_mode_only>",
+  "mask_store_cache_path": "<FILL:or_use_checkpoint3b_fresh_reuse_after_identity_checks>",
   "syncode_mode": "grammar_mask",
   "allow_unsupported_syncode_version": false,
-  "_controls_notes": "Add later digit-containing token IDs from the trace when known. Equivalent Qwen tokenization may be compared in a separate case with Qwen tokenizer IDs — never mix tokenizer vocabularies in one MaskStore."
+  "_controls_notes": "IDs 6782/56257 verified against Prob126_circuit6.json step 65. Also probe ' (1039), 'd (6813), h (1104), 'a (8490), 'hb/'b when present. Cache label checkpoint3b_fresh_reuse only after tokenizer/grammar/SynCode identity checks. Never mix Qwen IDs into a Nemotron MaskStore.",
+  "_cache_modes": [
+    "preflight/skip-mask",
+    "checkpoint3b_fresh_reuse",
+    "fresh_isolated"
+  ]
 }

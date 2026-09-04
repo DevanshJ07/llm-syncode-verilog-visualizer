@@ -1,0 +1,778 @@
+{
+  "problem": "Prob126_circuit6",
+  "step_index_unit": "zero_based",
+  "recorded_step": 65,
+  "steps": [
+    {
+      "step": 0,
+      "selected_token": "module",
+      "selected_token_id": 13655,
+      "raw_argmax_token": "module",
+      "raw_argmax_token_id": 13655,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 1,
+      "selected_token": " Top",
+      "selected_token_id": 11112,
+      "raw_argmax_token": " Top",
+      "raw_argmax_token_id": 11112,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 2,
+      "selected_token": "Module",
+      "selected_token_id": 10468,
+      "raw_argmax_token": "Module",
+      "raw_argmax_token_id": 10468,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module Top",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 3,
+      "selected_token": " (",
+      "selected_token_id": 1319,
+      "raw_argmax_token": " (",
+      "raw_argmax_token_id": 1319,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 4,
+      "selected_token": "input",
+      "selected_token_id": 4082,
+      "raw_argmax_token": "input",
+      "raw_argmax_token_id": 4082,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 5,
+      "selected_token": " ",
+      "selected_token_id": 1032,
+      "raw_argmax_token": " ",
+      "raw_argmax_token_id": 1032,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 6,
+      "selected_token": " [",
+      "selected_token_id": 1766,
+      "raw_argmax_token": " [",
+      "raw_argmax_token_id": 1766,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 7,
+      "selected_token": "2",
+      "selected_token_id": 1050,
+      "raw_argmax_token": "2",
+      "raw_argmax_token_id": 1050,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 8,
+      "selected_token": ":",
+      "selected_token_id": 1058,
+      "raw_argmax_token": ":",
+      "raw_argmax_token_id": 1058,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 9,
+      "selected_token": "0",
+      "selected_token_id": 1048,
+      "raw_argmax_token": "0",
+      "raw_argmax_token_id": 1048,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 10,
+      "selected_token": "]",
+      "selected_token_id": 1093,
+      "raw_argmax_token": "]",
+      "raw_argmax_token_id": 1093,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 11,
+      "selected_token": " a",
+      "selected_token_id": 1261,
+      "raw_argmax_token": " a",
+      "raw_argmax_token_id": 1261,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0]",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 12,
+      "selected_token": ",\n",
+      "selected_token_id": 1520,
+      "raw_argmax_token": ",\n",
+      "raw_argmax_token_id": 1520,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 13,
+      "selected_token": "                    ",
+      "selected_token_id": 13673,
+      "raw_argmax_token": "                    ",
+      "raw_argmax_token_id": 13673,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 14,
+      "selected_token": " output",
+      "selected_token_id": 4848,
+      "raw_argmax_token": " output",
+      "raw_argmax_token_id": 4848,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                    ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 15,
+      "selected_token": " [",
+      "selected_token_id": 1766,
+      "raw_argmax_token": " [",
+      "raw_argmax_token_id": 1766,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 16,
+      "selected_token": "1",
+      "selected_token_id": 1049,
+      "raw_argmax_token": "1",
+      "raw_argmax_token_id": 1049,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 17,
+      "selected_token": "5",
+      "selected_token_id": 1053,
+      "raw_argmax_token": "5",
+      "raw_argmax_token_id": 1053,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [1",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 18,
+      "selected_token": ":",
+      "selected_token_id": 1058,
+      "raw_argmax_token": ":",
+      "raw_argmax_token_id": 1058,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [15",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 19,
+      "selected_token": "0",
+      "selected_token_id": 1048,
+      "raw_argmax_token": "0",
+      "raw_argmax_token_id": 1048,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [15:",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 20,
+      "selected_token": "]",
+      "selected_token_id": 1093,
+      "raw_argmax_token": "]",
+      "raw_argmax_token_id": 1093,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [15:0",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 21,
+      "selected_token": " q",
+      "selected_token_id": 4367,
+      "raw_argmax_token": " q",
+      "raw_argmax_token_id": 4367,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [15:0]",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 22,
+      "selected_token": ");\n",
+      "selected_token_id": 1468,
+      "raw_argmax_token": ");\n",
+      "raw_argmax_token_id": 1468,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [15:0] q",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 23,
+      "selected_token": "   ",
+      "selected_token_id": 1293,
+      "raw_argmax_token": "   ",
+      "raw_argmax_token_id": 1293,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [15:0] q);\n",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 24,
+      "selected_token": " //",
+      "selected_token_id": 1895,
+      "raw_argmax_token": " //",
+      "raw_argmax_token_id": 1895,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "module TopModule (input  [2:0] a,\n                     output [15:0] q);\n   ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 25,
+      "selected_token": " Pre",
+      "selected_token_id": 6438,
+      "raw_argmax_token": " Pre",
+      "raw_argmax_token_id": 6438,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " TopModule (input  [2:0] a,\n                     output [15:0] q);\n    //",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 26,
+      "selected_token": "com",
+      "selected_token_id": 1730,
+      "raw_argmax_token": "com",
+      "raw_argmax_token_id": 1730,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "Module (input  [2:0] a,\n                     output [15:0] q);\n    // Pre",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 27,
+      "selected_token": "puted",
+      "selected_token_id": 57919,
+      "raw_argmax_token": "puted",
+      "raw_argmax_token_id": 57919,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " (input  [2:0] a,\n                     output [15:0] q);\n    // Precom",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 28,
+      "selected_token": " outputs",
+      "selected_token_id": 25675,
+      "raw_argmax_token": " outputs",
+      "raw_argmax_token_id": 25675,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "input  [2:0] a,\n                     output [15:0] q);\n    // Precomputed",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 29,
+      "selected_token": " based",
+      "selected_token_id": 4057,
+      "raw_argmax_token": " for",
+      "raw_argmax_token_id": 1394,
+      "raw_argmax_blocked": true,
+      "prefix_tail": "  [2:0] a,\n                     output [15:0] q);\n    // Precomputed outputs",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 30,
+      "selected_token": " on",
+      "selected_token_id": 1408,
+      "raw_argmax_token": " on",
+      "raw_argmax_token_id": 1408,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " [2:0] a,\n                     output [15:0] q);\n    // Precomputed outputs based",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 31,
+      "selected_token": " simulation",
+      "selected_token_id": 19822,
+      "raw_argmax_token": " simulation",
+      "raw_argmax_token_id": 19822,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "2:0] a,\n                     output [15:0] q);\n    // Precomputed outputs based on",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 32,
+      "selected_token": " data",
+      "selected_token_id": 2181,
+      "raw_argmax_token": " data",
+      "raw_argmax_token_id": 2181,
+      "raw_argmax_blocked": false,
+      "prefix_tail": ":0] a,\n                     output [15:0] q);\n    // Precomputed outputs based on simulation",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 33,
+      "selected_token": "\n",
+      "selected_token_id": 1010,
+      "raw_argmax_token": "\n",
+      "raw_argmax_token_id": 1010,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "0] a,\n                     output [15:0] q);\n    // Precomputed outputs based on simulation data",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 34,
+      "selected_token": "   ",
+      "selected_token_id": 1293,
+      "raw_argmax_token": "   ",
+      "raw_argmax_token_id": 1293,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "] a,\n                     output [15:0] q);\n    // Precomputed outputs based on simulation data\n",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 35,
+      "selected_token": " assign",
+      "selected_token_id": 16426,
+      "raw_argmax_token": " assign",
+      "raw_argmax_token_id": 16426,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " a,\n                     output [15:0] q);\n    // Precomputed outputs based on simulation data\n   ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 36,
+      "selected_token": " q",
+      "selected_token_id": 4367,
+      "raw_argmax_token": " q",
+      "raw_argmax_token_id": 4367,
+      "raw_argmax_blocked": false,
+      "prefix_tail": ",\n                     output [15:0] q);\n    // Precomputed outputs based on simulation data\n    assign",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 37,
+      "selected_token": " =",
+      "selected_token_id": 1376,
+      "raw_argmax_token": " =",
+      "raw_argmax_token_id": 1376,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "                     output [15:0] q);\n    // Precomputed outputs based on simulation data\n    assign q",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 38,
+      "selected_token": " (",
+      "selected_token_id": 1319,
+      "raw_argmax_token": " (",
+      "raw_argmax_token_id": 1319,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " output [15:0] q);\n    // Precomputed outputs based on simulation data\n    assign q =",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 39,
+      "selected_token": "a",
+      "selected_token_id": 1097,
+      "raw_argmax_token": "a",
+      "raw_argmax_token_id": 1097,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " [15:0] q);\n    // Precomputed outputs based on simulation data\n    assign q = (",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 40,
+      "selected_token": " ==",
+      "selected_token_id": 2351,
+      "raw_argmax_token": " ==",
+      "raw_argmax_token_id": 2351,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "15:0] q);\n    // Precomputed outputs based on simulation data\n    assign q = (a",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 41,
+      "selected_token": " ",
+      "selected_token_id": 1032,
+      "raw_argmax_token": " ",
+      "raw_argmax_token_id": 1032,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "5:0] q);\n    // Precomputed outputs based on simulation data\n    assign q = (a ==",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 42,
+      "selected_token": "3",
+      "selected_token_id": 1051,
+      "raw_argmax_token": "3",
+      "raw_argmax_token_id": 1051,
+      "raw_argmax_blocked": false,
+      "prefix_tail": ":0] q);\n    // Precomputed outputs based on simulation data\n    assign q = (a == ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 43,
+      "selected_token": ")",
+      "selected_token_id": 1041,
+      "raw_argmax_token": "'",
+      "raw_argmax_token_id": 1039,
+      "raw_argmax_blocked": true,
+      "prefix_tail": "0] q);\n    // Precomputed outputs based on simulation data\n    assign q = (a == 3",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 44,
+      "selected_token": " ?",
+      "selected_token_id": 3082,
+      "raw_argmax_token": " ?",
+      "raw_argmax_token_id": 3082,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "] q);\n    // Precomputed outputs based on simulation data\n    assign q = (a == 3)",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 45,
+      "selected_token": " ",
+      "selected_token_id": 1032,
+      "raw_argmax_token": " ",
+      "raw_argmax_token_id": 1032,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " q);\n    // Precomputed outputs based on simulation data\n    assign q = (a == 3) ?",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 46,
+      "selected_token": "1",
+      "selected_token_id": 1049,
+      "raw_argmax_token": "1",
+      "raw_argmax_token_id": 1049,
+      "raw_argmax_blocked": false,
+      "prefix_tail": ");\n    // Precomputed outputs based on simulation data\n    assign q = (a == 3) ? ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 47,
+      "selected_token": "6",
+      "selected_token_id": 1054,
+      "raw_argmax_token": "6",
+      "raw_argmax_token_id": 1054,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "    // Precomputed outputs based on simulation data\n    assign q = (a == 3) ? 1",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 48,
+      "selected_token": "'ha",
+      "selected_token_id": 56257,
+      "raw_argmax_token": "'h",
+      "raw_argmax_token_id": 6782,
+      "raw_argmax_blocked": true,
+      "prefix_tail": " // Precomputed outputs based on simulation data\n    assign q = (a == 3) ? 16",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 49,
+      "selected_token": "0",
+      "selected_token_id": 1048,
+      "raw_argmax_token": "0",
+      "raw_argmax_token_id": 1048,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " Precomputed outputs based on simulation data\n    assign q = (a == 3) ? 16'ha",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 50,
+      "selected_token": "e",
+      "selected_token_id": 1101,
+      "raw_argmax_token": "e",
+      "raw_argmax_token_id": 1101,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "computed outputs based on simulation data\n    assign q = (a == 3) ? 16'ha0",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 51,
+      "selected_token": " :",
+      "selected_token_id": 1737,
+      "raw_argmax_token": " :",
+      "raw_argmax_token_id": 1737,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "puted outputs based on simulation data\n    assign q = (a == 3) ? 16'ha0e",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 52,
+      "selected_token": " ",
+      "selected_token_id": 1032,
+      "raw_argmax_token": " ",
+      "raw_argmax_token_id": 1032,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " outputs based on simulation data\n    assign q = (a == 3) ? 16'ha0e :",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 53,
+      "selected_token": "\n",
+      "selected_token_id": 1010,
+      "raw_argmax_token": "\n",
+      "raw_argmax_token_id": 1010,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " based on simulation data\n    assign q = (a == 3) ? 16'ha0e : ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 54,
+      "selected_token": "              ",
+      "selected_token_id": 8082,
+      "raw_argmax_token": "              ",
+      "raw_argmax_token_id": 8082,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " on simulation data\n    assign q = (a == 3) ? 16'ha0e : \n",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 55,
+      "selected_token": " (",
+      "selected_token_id": 1319,
+      "raw_argmax_token": " (",
+      "raw_argmax_token_id": 1319,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " simulation data\n    assign q = (a == 3) ? 16'ha0e : \n              ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 56,
+      "selected_token": "a",
+      "selected_token_id": 1097,
+      "raw_argmax_token": "a",
+      "raw_argmax_token_id": 1097,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " data\n    assign q = (a == 3) ? 16'ha0e : \n               (",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 57,
+      "selected_token": " ==",
+      "selected_token_id": 2351,
+      "raw_argmax_token": " ==",
+      "raw_argmax_token_id": 2351,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "\n    assign q = (a == 3) ? 16'ha0e : \n               (a",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 58,
+      "selected_token": " ",
+      "selected_token_id": 1032,
+      "raw_argmax_token": " ",
+      "raw_argmax_token_id": 1032,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "    assign q = (a == 3) ? 16'ha0e : \n               (a ==",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 59,
+      "selected_token": "4",
+      "selected_token_id": 1052,
+      "raw_argmax_token": "4",
+      "raw_argmax_token_id": 1052,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " assign q = (a == 3) ? 16'ha0e : \n               (a == ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 60,
+      "selected_token": ")",
+      "selected_token_id": 1041,
+      "raw_argmax_token": ")",
+      "raw_argmax_token_id": 1041,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " q = (a == 3) ? 16'ha0e : \n               (a == 4",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 61,
+      "selected_token": " ?",
+      "selected_token_id": 3082,
+      "raw_argmax_token": " ?",
+      "raw_argmax_token_id": 3082,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " = (a == 3) ? 16'ha0e : \n               (a == 4)",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 62,
+      "selected_token": " ",
+      "selected_token_id": 1032,
+      "raw_argmax_token": " ",
+      "raw_argmax_token_id": 1032,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " (a == 3) ? 16'ha0e : \n               (a == 4) ?",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 63,
+      "selected_token": "1",
+      "selected_token_id": 1049,
+      "raw_argmax_token": "1",
+      "raw_argmax_token_id": 1049,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "a == 3) ? 16'ha0e : \n               (a == 4) ? ",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 64,
+      "selected_token": "6",
+      "selected_token_id": 1054,
+      "raw_argmax_token": "6",
+      "raw_argmax_token_id": 1054,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " == 3) ? 16'ha0e : \n               (a == 4) ? 1",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 65,
+      "selected_token": "'ha",
+      "selected_token_id": 56257,
+      "raw_argmax_token": "'h",
+      "raw_argmax_token_id": 6782,
+      "raw_argmax_blocked": true,
+      "prefix_tail": " 3) ? 16'ha0e : \n               (a == 4) ? 16",
+      "top_raw_tokens": [
+        {
+          "token_id": 6782,
+          "token": "'h",
+          "raw_logit": 28.0,
+          "allowed_after_syncode": false
+        },
+        {
+          "token_id": 1039,
+          "token": "'",
+          "raw_logit": 23.875,
+          "allowed_after_syncode": false
+        },
+        {
+          "token_id": 56257,
+          "token": "'ha",
+          "raw_logit": 22.625,
+          "allowed_after_syncode": true
+        },
+        {
+          "token_id": 10353,
+          "token": "\u2019h",
+          "raw_logit": 22.0,
+          "allowed_after_syncode": false
+        },
+        {
+          "token_id": 6813,
+          "token": "'d",
+          "raw_logit": 18.5,
+          "allowed_after_syncode": false
+        },
+        {
+          "token_id": 34227,
+          "token": "'hab",
+          "raw_logit": 17.875,
+          "allowed_after_syncode": true
+        },
+        {
+          "token_id": 19666,
+          "token": "'H",
+          "raw_logit": 17.875,
+          "allowed_after_syncode": false
+        },
+        {
+          "token_id": 1104,
+          "token": "h",
+          "raw_logit": 17.375,
+          "allowed_after_syncode": false
+        },
+        {
+          "token_id": 2405,
+          "token": "'t",
+          "raw_logit": 17.125,
+          "allowed_after_syncode": false
+        },
+        {
+          "token_id": 1034,
+          "token": "\"",
+          "raw_logit": 16.875,
+          "allowed_after_syncode": false
+        }
+      ]
+    },
+    {
+      "step": 66,
+      "selected_token": "6",
+      "selected_token_id": 1054,
+      "raw_argmax_token": "6",
+      "raw_argmax_token_id": 1054,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "3) ? 16'ha0e : \n               (a == 4) ? 16'ha",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 67,
+      "selected_token": "6",
+      "selected_token_id": 1054,
+      "raw_argmax_token": "6",
+      "raw_argmax_token_id": 1054,
+      "raw_argmax_blocked": false,
+      "prefix_tail": ") ? 16'ha0e : \n               (a == 4) ? 16'ha6",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 68,
+      "selected_token": " :",
+      "selected_token_id": 1737,
+      "raw_argmax_token": " :",
+      "raw_argmax_token_id": 1737,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " ? 16'ha0e : \n               (a == 4) ? 16'ha66",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 69,
+      "selected_token": " ",
+      "selected_token_id": 1032,
+      "raw_argmax_token": " ",
+      "raw_argmax_token_id": 1032,
+      "raw_argmax_blocked": false,
+      "prefix_tail": " 16'ha0e : \n               (a == 4) ? 16'ha66 :",
+      "top_raw_tokens": null
+    },
+    {
+      "step": 70,
+      "selected_token": "\n",
+      "selected_token_id": 1010,
+      "raw_argmax_token": "\n",
+      "raw_argmax_token_id": 1010,
+      "raw_argmax_blocked": false,
+      "prefix_tail": "16'ha0e : \n               (a == 4) ? 16'ha66 : ",
+      "top_raw_tokens": null
+    }
+  ]
+}

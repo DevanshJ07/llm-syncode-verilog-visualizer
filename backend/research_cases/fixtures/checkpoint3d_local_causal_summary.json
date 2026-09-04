@@ -1,0 +1,38 @@
+{
+  "execution_status": "complete_local_minimal_plus_trace_extraction",
+  "nscc_full_vocab_status": "REQUIRED_NOT_RUN",
+  "trace_step_index": 65,
+  "step_index_unit": "zero_based",
+  "raw_argmax_token_id": 6782,
+  "raw_argmax_token": "'h",
+  "raw_argmax_blocked": true,
+  "selected_token_id": 56257,
+  "selected_token": "'ha",
+  "prefix_tail": " 16'ha0e : \n               (a == 4) ? 16",
+  "prefix_sha256_utf8": "63b2b09fbc02b91ccffa2b059f4888159359a3b2f5535034347440237fe13ec6",
+  "tokenizer_utf8_hex": {
+    "6782": "2768",
+    "56257": "276861"
+  },
+  "witness_canonical_success": true,
+  "grammar_sha256": "1d4dc2bccf39f3e591e3dc59834c1c17b33b3f27d00a7ddd8810c795510cc4ef",
+  "number_fsm_classification": "viable_nonfinal_discarded_by_consume_prefix",
+  "state_after_h_live": true,
+  "state_after_h_final": false,
+  "state_after_h_digit_outs": true,
+  "consume_prefix_h_remainder_hex": "2768",
+  "minimal_mask_bits": {
+    "3": false,
+    "4": true
+  },
+  "first_verified_divergence": "ByteFSM.consume_prefix:viable_nonfinal_state_discarded",
+  "supported_conclusion": "verified_viable_nonfinal_number_state_discarded",
+  "minimal_control_conclusion": "verified_viable_nonfinal_number_state_discarded",
+  "original_nemotron_conclusion": "awaiting_full_runtime_verification",
+  "conclusion_scope": "mixed_pending_nscc",
+  "causal_conclusion_status": "conclusive",
+  "fixed_k_status": "UNAVAILABLE",
+  "trace_basename": "Prob126_circuit6.json",
+  "trace_sha256": "f6ea18c852e15b31c766e904e865392f4487119785c90477ebb1f90089c8430e",
+  "grammar_sha_unchanged": true
+}

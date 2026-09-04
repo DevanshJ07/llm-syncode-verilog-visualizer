@@ -42,6 +42,13 @@ RootCauseKind = Literal[
     "verified_stored_mask_construction_defect",
     "verified_fixed_k_limitation",
     "verified_integration_instrumentation_defect",
+    # Checkpoint 3D based-number conclusions
+    "verified_viable_nonfinal_number_state_discarded",
+    "verified_number_terminal_dfa_defect",
+    "verified_remainder_extension_defect",
+    "integration_or_trace_mismatch",
+    "no_completeness_violation",
+    "awaiting_full_runtime_verification",
 ]
 
 ExecutionStatus = Literal["complete", "failed"]
@@ -61,6 +68,12 @@ CausalReasonCode = Literal[
     "traced_runtime_mismatch",
     "unavailable_private_state",
     "whitespace_strip_asymmetric",
+    "viable_nonfinal_state_discarded",
+    "incomplete_terminal_token_not_stored",
+    "remainder_extension_not_preserved",
+    "terminal_fsm_transition_missing",
+    "accept_sequence_lookahead_insufficient",
+    "other",
     "unknown",
 ]
 
@@ -82,6 +95,8 @@ class ProbeCaseSpec(BaseModel):
     raw_argmax_token_id: Optional[int] = None
     witness_source_file: Optional[str] = None
     witness_completion_suffix: Optional[str] = None
+    # Optional per-candidate suffixes keyed by decoded text or str(token_id).
+    candidate_witness_suffixes: Optional[dict[str, str]] = None
     expected_grammar_sha256: Optional[str] = None
     expected_tokenizer_model: Optional[str] = None
     expected_tokenizer_revision: Optional[str] = None
@@ -274,6 +289,12 @@ class RootCauseReport(BaseModel):
     answers: list[EvidenceItem] = Field(default_factory=list)
     first_verified_divergence: Optional[str] = None
     supported_conclusion: RootCauseKind = "unresolved_internal_evidence_unavailable"
+    # Checkpoint 3D scoping: minimal reproduction vs original Nemotron case.
+    minimal_control_conclusion: Optional[RootCauseKind] = None
+    original_nemotron_conclusion: Optional[RootCauseKind] = None
+    conclusion_scope: Optional[
+        Literal["minimal_control", "original_nemotron_full", "mixed_pending_nscc"]
+    ] = None
     remaining_uncertainty: list[str] = Field(default_factory=list)
     unresolved_reasons: list[str] = Field(default_factory=list)
     causal_conclusion_status: CausalConclusionStatus = "unresolved"
@@ -335,6 +356,87 @@ class CandidateCausalTrace(BaseModel):
     first_reject_detail: str = ""
 
 
+class NumberFsmWalkStep(BaseModel):
+    label: str
+    byte_value: Optional[int] = None
+    byte_hex: str = ""
+    state_id: Optional[str] = None
+    is_final: Optional[bool] = None
+    is_live: Optional[bool] = None
+    transition_exists: Optional[bool] = None
+
+
+class NumberTerminalFsmEvidence(BaseModel):
+    terminal_name: str = "NUMBER"
+    regexp: str = ""
+    remainder_text: str = ""
+    remainder_bytes_hex: str = ""
+    state_after_remainder: Optional[str] = None
+    state_after_remainder_is_final: Optional[bool] = None
+    state_after_remainder_is_live: Optional[bool] = None
+    walk_short: list[NumberFsmWalkStep] = Field(default_factory=list)
+    walk_long: list[NumberFsmWalkStep] = Field(default_factory=list)
+    consume_prefix_short_ok: Optional[bool] = None
+    consume_prefix_short_remainder_hex: Optional[str] = None
+    consume_prefix_long_ok: Optional[bool] = None
+    consume_prefix_long_remainder_hex: Optional[str] = None
+    state_after_short: Optional[str] = None
+    state_after_short_is_final: Optional[bool] = None
+    state_after_short_is_live: Optional[bool] = None
+    state_after_short_has_digit_transitions: Optional[bool] = None
+    state_after_long: Optional[str] = None
+    state_after_long_is_final: Optional[bool] = None
+    state_after_long_is_live: Optional[bool] = None
+    accepts_remainder_plus_short: Optional[bool] = None
+    accepts_remainder_plus_long: Optional[bool] = None
+    classification: str = "unknown"
+    detail: str = ""
+
+
+class BasedNumberCausalEvidence(BaseModel):
+    """Checkpoint 3D — "'h" versus "'ha" NUMBER-terminal causal differential."""
+
+    schema_section: str = "based_number_causal_v1"
+    tracing_mode: Literal["observational", "temporary_hooks"] = "observational"
+    tracing_reliable: bool = False
+    hooks_restored: Optional[bool] = None
+    short_token_id: Optional[int] = None
+    long_token_id: Optional[int] = None
+    short_decode: Optional[str] = None
+    long_decode: Optional[str] = None
+    short_bytes_hex: str = ""
+    long_bytes_hex: str = ""
+    number_fsm: Optional[NumberTerminalFsmEvidence] = None
+    short_trace: Optional[CandidateCausalTrace] = None
+    long_trace: Optional[CandidateCausalTrace] = None
+    first_differing_field: Optional[str] = None
+    first_differing_reason_code: CausalReasonCode = "unknown"
+    first_differing_detail: str = ""
+    original_short_mask_bit: Optional[bool] = None
+    original_long_mask_bit: Optional[bool] = None
+    counterfactual_short_mask_bit: Optional[bool] = None
+    counterfactual_label: Optional[str] = None
+    counterfactual_status: EvidenceClass = "UNAVAILABLE"
+    counterfactual_detail: str = ""
+    fixed_k_status: EvidenceClass = "UNAVAILABLE"
+    fixed_k_detail: str = (
+        "Independent k>2 accept-sequence variation is UNAVAILABLE via SynCode "
+        "0.4.16 public APIs without changing other variables."
+    )
+    separate_digit_token_hypothesis: Optional[dict[str, Any]] = None
+    minimal_grammar: Optional[dict[str, Any]] = None
+    # Scoping: mechanism may be verified on minimal SynCode without promoting
+    # the original full-vocab Nemotron case until NSCC completes.
+    full_vocab_runtime_verified: bool = False
+    minimal_control_conclusion: Optional[str] = None
+    original_nemotron_conclusion: Optional[str] = None
+    conclusion_scope: Literal[
+        "minimal_control", "original_nemotron_full", "mixed_pending_nscc"
+    ] = "mixed_pending_nscc"
+    private_functions_inspected: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class CausalDifferentialEvidence(BaseModel):
     """Newline-versus-space differential at the same prefix/parser state."""
 
@@ -390,6 +492,7 @@ class SyncodeMaskProbeResult(BaseModel):
     mask_attribution: Optional[MaskAttributionEvidence] = None
     witnesses: list[WitnessEvidence] = Field(default_factory=list)
     causal: Optional[CausalDifferentialEvidence] = None
+    number_causal: Optional[BasedNumberCausalEvidence] = None
     root_cause: Optional[RootCauseReport] = None
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

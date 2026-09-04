@@ -193,6 +193,12 @@ def original_trace_token_text(
         if step.get("selected_token_id") == token_id:
             tok = step.get("selected_token")
             return tok if isinstance(tok, str) else None
+        if step.get("raw_argmax_token_id") == token_id:
+            tok = step.get("raw_argmax_token")
+            return tok if isinstance(tok, str) else None
+        for row in step.get("top_raw_tokens") or []:
+            if row.get("token_id") == token_id and isinstance(row.get("token"), str):
+                return row["token"]
     # Fall back: expected_decoded_candidates keyed by str(id)
     if case.expected_decoded_candidates:
         return case.expected_decoded_candidates.get(str(token_id))

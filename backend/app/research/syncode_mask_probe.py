@@ -278,8 +278,11 @@ def run_probe(
     allow_download: bool = False,
     local_files_only: bool = True,
     run_causal_trace: bool = False,
+    run_number_causal_trace: bool = False,
     newline_token_id: int = 1010,
     space_token_id: int = 1032,
+    short_number_token_id: Optional[int] = None,
+    long_number_token_id: Optional[int] = None,
 ) -> SyncodeMaskProbeResult:
     """
     Execute the diagnostic probe.
@@ -463,15 +466,24 @@ def run_probe(
                 )
             )
 
-    if case.witness_completion_suffix is not None:
+    if case.candidate_witness_suffixes or case.witness_completion_suffix is not None:
         for tc in result.tokenizer_candidates:
             if tc.decode_cleanup_disabled is None:
+                continue
+            suffix = None
+            if case.candidate_witness_suffixes:
+                suffix = case.candidate_witness_suffixes.get(
+                    str(tc.token_id)
+                ) or case.candidate_witness_suffixes.get(tc.decode_cleanup_disabled)
+            if suffix is None:
+                suffix = case.witness_completion_suffix
+            if suffix is None:
                 continue
             result.witnesses.append(
                 constructive_canonical_witness(
                     prefix=prefix,
                     candidate_decoded_text=tc.decode_cleanup_disabled,
-                    completion_suffix=case.witness_completion_suffix,
+                    completion_suffix=suffix,
                 )
             )
     elif case.witness_source_file:
@@ -563,6 +575,77 @@ def run_probe(
             )
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"causal trace failed: {type(exc).__name__}: {exc}")
+            result.warnings = warnings
+
+    # Checkpoint 3D based-number causal differential (optional).
+    if (
+        run_number_causal_trace
+        and _mask_store_for_causal is not None
+        and _pr_mask_for_causal is not None
+        and result.mask_attribution is not None
+    ):
+        try:
+            from app.research.syncode_mask_probe_number_causal import (
+                build_based_number_causal,
+            )
+
+            short_id = short_number_token_id
+            long_id = long_number_token_id
+            if short_id is None and case.raw_argmax_token_id is not None:
+                short_id = int(case.raw_argmax_token_id)
+            if long_id is None and case.selected_token_id is not None:
+                long_id = int(case.selected_token_id)
+            if short_id is None or long_id is None:
+                raise ValueError(
+                    "run_number_causal_trace requires short/long token IDs "
+                    "(raw_argmax/selected or explicit args)"
+                )
+            short_bytes = b"'h"
+            long_bytes = b"'ha"
+            short_decode = "'h"
+            long_decode = "'ha"
+            for bc in result.byte_tokenizer_candidates:
+                if bc.token_id == short_id and bc.syncode_bytes_hex:
+                    short_bytes = bytes.fromhex(bc.syncode_bytes_hex)
+                if bc.token_id == long_id and bc.syncode_bytes_hex:
+                    long_bytes = bytes.fromhex(bc.syncode_bytes_hex)
+            for tc in result.tokenizer_candidates:
+                if tc.token_id == short_id and tc.decode_cleanup_disabled is not None:
+                    short_decode = tc.decode_cleanup_disabled
+                if tc.token_id == long_id and tc.decode_cleanup_disabled is not None:
+                    long_decode = tc.decode_cleanup_disabled
+            rem_text = "16"
+            if result.parser and result.parser.remainder_text:
+                rem_text = result.parser.remainder_text
+            result.number_causal = build_based_number_causal(
+                mask_store=_mask_store_for_causal,
+                parse_result=_pr_mask_for_causal,
+                grammar_text=_gtext_for_causal or gtext,
+                short_token_id=short_id,
+                long_token_id=long_id,
+                short_bytes=short_bytes,
+                long_bytes=long_bytes,
+                short_decode=short_decode,
+                long_decode=long_decode,
+                runtime_bits=dict(result.mask_attribution.runtime_mask_bits),
+                reconstructed_bits=dict(
+                    result.mask_attribution.reconstructed_union_bits
+                ),
+                remainder_text=rem_text,
+                ignore_terminals=(
+                    result.parser.ignore_terminals if result.parser else None
+                ),
+                current_accept_terminals=(
+                    result.parser.current_accept_terminals if result.parser else None
+                ),
+                next_accept_terminals=(
+                    result.parser.next_accept_terminals if result.parser else None
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(
+                f"number causal trace failed: {type(exc).__name__}: {exc}"
+            )
             result.warnings = warnings
 
     # Set execution complete BEFORE building root_cause so status text matches.
