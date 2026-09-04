@@ -33,6 +33,35 @@ RootCauseKind = Literal[
     "unresolved_internal_evidence_unavailable",
     "candidate_admitted_by_mask",
     "candidate_rejected_by_verified_mask",
+    # Checkpoint 3C causal conclusions (only when verified)
+    "verified_terminal_dfa_construction_defect",
+    "verified_dfa_transition_defect",
+    "verified_ignored_terminal_handling_defect",
+    "verified_remainder_state_handling_defect",
+    "verified_accept_sequence_lookup_defect",
+    "verified_stored_mask_construction_defect",
+    "verified_fixed_k_limitation",
+    "verified_integration_instrumentation_defect",
+]
+
+ExecutionStatus = Literal["complete", "failed"]
+CausalConclusionStatus = Literal["conclusive", "unresolved"]
+
+CausalReasonCode = Literal[
+    "terminal_dfa_rejects_byte",
+    "transition_missing",
+    "non_accepting_state",
+    "remainder_not_finalized",
+    "ignored_terminal_not_entered",
+    "ignored_terminal_transition_missing",
+    "terminal_boundary_missing",
+    "next_terminal_lookup_missing",
+    "lookup_key_missing",
+    "stored_mask_bit_false",
+    "traced_runtime_mismatch",
+    "unavailable_private_state",
+    "whitespace_strip_asymmetric",
+    "unknown",
 ]
 
 
@@ -246,16 +275,106 @@ class RootCauseReport(BaseModel):
     first_verified_divergence: Optional[str] = None
     supported_conclusion: RootCauseKind = "unresolved_internal_evidence_unavailable"
     remaining_uncertainty: list[str] = Field(default_factory=list)
+    unresolved_reasons: list[str] = Field(default_factory=list)
+    causal_conclusion_status: CausalConclusionStatus = "unresolved"
 
 
 ReportStatus = Literal["complete", "failed", "incomplete"]
+
+
+class ByteTransitionStep(BaseModel):
+    byte_value: int
+    byte_hex: str = ""
+    state_before: Optional[str] = None
+    state_after: Optional[str] = None
+    transition_exists: Optional[bool] = None
+    reason_code: CausalReasonCode = "unknown"
+
+
+class ConstructionReplayStep(BaseModel):
+    """Replay of MaskStore._process_regular_tokens / _process_complete_case for one token."""
+
+    stage: str
+    detail: str = ""
+    remainder_before: Optional[str] = None
+    remainder_after: Optional[str] = None
+    is_valid: Optional[bool] = None
+    would_store_token: Optional[bool] = None
+    reason_code: CausalReasonCode = "unknown"
+
+
+class SequenceCausalTrace(BaseModel):
+    terminals: list[str] = Field(default_factory=list)
+    construction_kind: str = "unknown"
+    contains_ignored_terminal: bool = False
+    lookup_branch: str = ""
+    lookup_key: Optional[str] = None
+    lookup_key_exists: Optional[bool] = None
+    remainder_state: Optional[str] = None
+    remainder_bytes_hex: str = ""
+    fsm_state: Optional[str] = None
+    fsm_is_final: Optional[bool] = None
+    candidate_bytes_hex: str = ""
+    byte_transitions: list[ByteTransitionStep] = Field(default_factory=list)
+    construction_replay: list[ConstructionReplayStep] = Field(default_factory=list)
+    stored_per_sequence_bit: Optional[bool] = None
+    reason_code: CausalReasonCode = "unknown"
+    detail: str = ""
+
+
+class CandidateCausalTrace(BaseModel):
+    token_id: int
+    decode_text: Optional[str] = None
+    bytes_hex: str = ""
+    runtime_union_bit: Optional[bool] = None
+    reconstructed_union_bit: Optional[bool] = None
+    construction_would_store_on_identifier_next: Optional[bool] = None
+    direct_ws_dfa_accepts: Optional[bool] = None
+    sequences: list[SequenceCausalTrace] = Field(default_factory=list)
+    first_reject_reason: CausalReasonCode = "unknown"
+    first_reject_detail: str = ""
+
+
+class CausalDifferentialEvidence(BaseModel):
+    """Newline-versus-space differential at the same prefix/parser state."""
+
+    schema_section: str = "causal_differential_v1"
+    tracing_mode: Literal["observational", "temporary_hooks"] = "observational"
+    tracing_reliable: bool = False
+    hooks_restored: Optional[bool] = None
+    traced_mask_equals_runtime: Optional[bool] = None
+    ws_grammar_definition_verbatim: str = ""
+    ws_regexp: str = ""
+    ws_dfa_accepts: dict[str, Optional[bool]] = Field(default_factory=dict)
+    lark_ws_lexer_accepts: dict[str, Optional[bool]] = Field(default_factory=dict)
+    remove_left_whitespace_strips: dict[str, str] = Field(default_factory=dict)
+    first_differing_field: Optional[str] = None
+    first_differing_reason_code: CausalReasonCode = "unknown"
+    first_differing_detail: str = ""
+    newline_trace: Optional[CandidateCausalTrace] = None
+    space_trace: Optional[CandidateCausalTrace] = None
+    fixed_k_status: EvidenceClass = "UNAVAILABLE"
+    fixed_k_detail: str = (
+        "Independent k>2 lookup not available via SynCode 0.4.16 public APIs "
+        "without changing other variables; hypothesis classified UNAVAILABLE."
+    )
+    minimal_grammar: Optional[dict[str, Any]] = None
+    private_functions_inspected: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class SyncodeMaskProbeResult(BaseModel):
     """Machine-readable probe output."""
 
     schema_version: str = PROBE_SCHEMA_VERSION
+    # Legacy field kept for syncode_mask_probe_v1 consumers.
+    # Mirrors execution_status once a run finishes (complete|failed).
+    # "incomplete" is only for in-progress / aborted serialization.
     report_status: ReportStatus = "incomplete"
+    execution_status: Optional[ExecutionStatus] = None
+    causal_conclusion_status: CausalConclusionStatus = "unresolved"
+    supported_conclusion: RootCauseKind = "unresolved_internal_evidence_unavailable"
+    unresolved_reasons: list[str] = Field(default_factory=list)
     failure_stage: Optional[str] = None
     case: ProbeCaseSpec
     provenance: ProbeProvenance = Field(default_factory=ProbeProvenance)
@@ -270,6 +389,7 @@ class SyncodeMaskProbeResult(BaseModel):
     parser: Optional[ParserProbeEvidence] = None
     mask_attribution: Optional[MaskAttributionEvidence] = None
     witnesses: list[WitnessEvidence] = Field(default_factory=list)
+    causal: Optional[CausalDifferentialEvidence] = None
     root_cause: Optional[RootCauseReport] = None
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

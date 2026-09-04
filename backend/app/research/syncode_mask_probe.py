@@ -227,25 +227,43 @@ def create_incremental_parser(grammar_text: str):
     return create_parser(grammar), grammar
 
 
+def _finalize_statuses(result: SyncodeMaskProbeResult) -> SyncodeMaskProbeResult:
+    """Keep JSON/Markdown status fields consistent after root_cause is built."""
+    if result.execution_status == "failed":
+        result.report_status = "failed"
+    elif result.execution_status == "complete":
+        result.report_status = "complete"
+    if result.root_cause is not None:
+        result.supported_conclusion = result.root_cause.supported_conclusion
+        result.causal_conclusion_status = result.root_cause.causal_conclusion_status
+        result.unresolved_reasons = list(result.root_cause.unresolved_reasons)
+    return result
+
+
 def _fail(
     result: SyncodeMaskProbeResult,
     *,
     stage: str,
     error: str,
 ) -> SyncodeMaskProbeResult:
+    result.execution_status = "failed"
     result.report_status = "failed"
     result.failure_stage = stage
     result.errors = list(result.errors) + [error]
-    # Never claim SynCode bug on failed/incomplete runs.
-    if result.root_cause is None:
-        result.root_cause = build_root_cause(result)
+    result.causal_conclusion_status = "unresolved"
+    result.supported_conclusion = "unresolved_internal_evidence_unavailable"
+    result.root_cause = build_root_cause(result)
     result.root_cause.supported_conclusion = (
         "unresolved_internal_evidence_unavailable"
     )
+    result.root_cause.causal_conclusion_status = "unresolved"
     result.root_cause.remaining_uncertainty = list(
         result.root_cause.remaining_uncertainty
     ) + [f"probe failed at stage={stage}"]
-    return result
+    result.root_cause.unresolved_reasons = list(
+        result.root_cause.unresolved_reasons
+    ) + [f"execution_status=failed failure_stage={stage}"]
+    return _finalize_statuses(result)
 
 
 def run_probe(
@@ -259,6 +277,9 @@ def run_probe(
     case_file: Optional[Path] = None,
     allow_download: bool = False,
     local_files_only: bool = True,
+    run_causal_trace: bool = False,
+    newline_token_id: int = 1010,
+    space_token_id: int = 1032,
 ) -> SyncodeMaskProbeResult:
     """
     Execute the diagnostic probe.
@@ -268,10 +289,19 @@ def run_probe(
     a minimal grammar. Production Verilog mask store is never built by unit tests
     that pass a minimal grammar + tiny vocab.
     """
-    result = SyncodeMaskProbeResult(case=case, report_status="incomplete")
+    result = SyncodeMaskProbeResult(
+        case=case,
+        report_status="incomplete",
+        execution_status=None,
+        causal_conclusion_status="unresolved",
+    )
     warnings: list[str] = []
     symbol_status = "UNAVAILABLE"
     symbol_detail = ""
+    # Retain locals for optional causal pass
+    _mask_store_for_causal = None
+    _pr_mask_for_causal = None
+    _gtext_for_causal = None
 
     try:
         require_syncode_version(
@@ -389,6 +419,9 @@ def run_probe(
                 if result.parser
                 else None,
             )
+            _mask_store_for_causal = mask_store
+            _pr_mask_for_causal = pr_mask
+            _gtext_for_causal = gtext
             if (
                 result.mask_attribution is not None
                 and not result.mask_attribution.attribution_reliable
@@ -487,15 +520,57 @@ def run_probe(
         return _fail(result, stage="provenance", error=str(exc))
 
     result.warnings = warnings
-    result.root_cause = build_root_cause(result)
-    # Refuse SynCode-bug style conclusions without verified mask attribution.
-    if result.mask_attribution is None and skip_mask_store:
-        result.root_cause.remaining_uncertainty.append(
-            "mask store skipped; no verified mask decision"
-        )
+
+    # Checkpoint 3C causal differential (optional; requires mask store).
+    if (
+        run_causal_trace
+        and _mask_store_for_causal is not None
+        and _pr_mask_for_causal is not None
+        and result.mask_attribution is not None
+    ):
+        try:
+            from app.research.syncode_mask_probe_causal import build_causal_differential
+
+            nl_bytes = b"\n"
+            sp_bytes = b" "
+            # Prefer ByteTokenizer bytes when available
+            for bc in result.byte_tokenizer_candidates:
+                if bc.token_id == newline_token_id and bc.syncode_bytes_hex:
+                    nl_bytes = bytes.fromhex(bc.syncode_bytes_hex)
+                if bc.token_id == space_token_id and bc.syncode_bytes_hex:
+                    sp_bytes = bytes.fromhex(bc.syncode_bytes_hex)
+            result.causal = build_causal_differential(
+                mask_store=_mask_store_for_causal,
+                parse_result=_pr_mask_for_causal,
+                grammar_text=_gtext_for_causal or gtext,
+                newline_token_id=newline_token_id,
+                space_token_id=space_token_id,
+                newline_bytes=nl_bytes,
+                space_bytes=sp_bytes,
+                runtime_bits=dict(result.mask_attribution.runtime_mask_bits),
+                reconstructed_bits=dict(
+                    result.mask_attribution.reconstructed_union_bits
+                ),
+                ignore_terminals=(
+                    result.parser.ignore_terminals if result.parser else None
+                ),
+                current_accept_terminals=(
+                    result.parser.current_accept_terminals if result.parser else None
+                ),
+                next_accept_terminals=(
+                    result.parser.next_accept_terminals if result.parser else None
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"causal trace failed: {type(exc).__name__}: {exc}")
+            result.warnings = warnings
+
+    # Set execution complete BEFORE building root_cause so status text matches.
+    result.execution_status = "complete"
     result.report_status = "complete"
     result.failure_stage = None
-    return result
+    result.root_cause = build_root_cause(result)
+    return _finalize_statuses(result)
 
 
 def write_probe_outputs(

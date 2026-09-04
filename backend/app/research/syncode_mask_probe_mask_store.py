@@ -131,3 +131,70 @@ def build_or_load_mask_store(
             notes=notes,
         )
         return store, identity
+
+
+def discover_syncode_cache_candidates(
+    search_roots: list[str | Path],
+) -> list[dict[str, Any]]:
+    """
+    Discover mask-store / parser pickles under NSCC-style layouts.
+
+    Recognizes nested names such as ``syncode_cachemask_stores`` and
+    ``syncode_cacheparsers``. Never labels a hit as proven_original.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    patterns = ("grammar_mask_*.pkl", "*.pkl")
+    for root in search_roots:
+        base = Path(root)
+        row: dict[str, Any] = {
+            "root": str(base),
+            "status": "missing" if not base.exists() else "present",
+            "candidates": [],
+        }
+        if not base.exists():
+            out.append(row)
+            continue
+        # Explicit NSCC layout folders
+        extra_dirs = [
+            base,
+            base / "syncode_cachemask_stores",
+            base / "syncode_cacheparsers",
+            base / "mask_stores",
+            base / "parsers",
+        ]
+        files: list[Path] = []
+        for d in extra_dirs:
+            if not d.exists():
+                continue
+            for pat in patterns:
+                files.extend(d.rglob(pat))
+        for pickle in files:
+            key = str(pickle.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            st = pickle.stat()
+            classification = "candidate_existing"
+            reject = None
+            # Compatibility notes only — caller must still match grammar/tokenizer.
+            name = pickle.name
+            if not name.startswith("grammar_mask_") and "mask" not in pickle.as_posix():
+                classification = "unknown_provenance"
+                reject = "filename does not look like a SynCode mask-store pickle"
+            row["candidates"].append(
+                {
+                    "path": key,
+                    "size": st.st_size,
+                    "mtime": st.st_mtime,
+                    "sha256": file_sha256(pickle),
+                    "classification": classification,
+                    "compatibility_rejection_reason": reject,
+                    "notes": (
+                        "Do not label proven_original without independent linkage "
+                        "to the focused_four generation run"
+                    ),
+                }
+            )
+        out.append(row)
+    return out

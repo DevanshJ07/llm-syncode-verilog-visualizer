@@ -118,3 +118,32 @@ def minimal_grammar_control_witness(
         grammar_sha256="minimal_grammar_control_not_canonical",
         warnings=warnings,
     )
+
+
+# Candidate-specific valid suffixes for Checkpoint 3C control oracles.
+# Each suffix is chosen so P+T+S is independently valid; do not reuse a suffix
+# that duplicates punctuation already present in the candidate.
+CONTROL_WITNESS_SUFFIXES: dict[str, str] = {
+    "newline": ");\nendmodule\n",
+    "space": ");\nendmodule\n",
+    "double_newline": ");\nendmodule\n",
+    "comma_newline": " input wire extra,\n    output wire y\n);\nendmodule\n",
+    "rpar_newline": ";\nendmodule\n",
+    "rpar_semi_newline": "endmodule\n",
+}
+
+
+def control_canonical_witness(
+    *,
+    prefix: str,
+    control_name: str,
+    candidate_decoded_text: str,
+) -> WitnessEvidence:
+    """Constructive oracle with a control-specific valid suffix."""
+    if control_name not in CONTROL_WITNESS_SUFFIXES:
+        raise ValueError(f"unknown control_name {control_name!r}")
+    return constructive_canonical_witness(
+        prefix=prefix,
+        candidate_decoded_text=candidate_decoded_text,
+        completion_suffix=CONTROL_WITNESS_SUFFIXES[control_name],
+    )

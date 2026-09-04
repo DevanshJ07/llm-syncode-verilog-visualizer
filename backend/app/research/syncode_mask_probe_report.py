@@ -15,8 +15,57 @@ from app.models.syncode_mask_probe import (
 def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
     answers: list[EvidenceItem] = []
     uncertainty: list[str] = []
+    unresolved: list[str] = []
     divergence: Optional[str] = None
     conclusion: RootCauseKind = "unresolved_internal_evidence_unavailable"
+    causal_status = "unresolved"
+
+    # Prefer Checkpoint 3C causal differential when present and reliable.
+    if result.causal is not None:
+        from app.research.syncode_mask_probe_causal import conclude_from_causal
+
+        c_conc, c_status, c_unresolved = conclude_from_causal(result.causal)
+        conclusion = c_conc  # type: ignore[assignment]
+        causal_status = c_status
+        unresolved.extend(c_unresolved)
+        answers.append(
+            EvidenceItem(
+                claim="newline vs space first differing construction stage",
+                classification=(
+                    "VERIFIED" if c_status == "conclusive" else "UNAVAILABLE"
+                ),
+                detail=(
+                    f"field={result.causal.first_differing_field}; "
+                    f"reason={result.causal.first_differing_reason_code}; "
+                    f"{result.causal.first_differing_detail}"
+                ),
+            )
+        )
+        if result.causal.first_differing_field:
+            divergence = (
+                f"{result.causal.first_differing_field}: "
+                f"{result.causal.first_differing_reason_code}"
+            )
+        answers.append(
+            EvidenceItem(
+                claim="SynCode WS DFA accepts LF (0a)",
+                classification=(
+                    "VERIFIED"
+                    if result.causal.ws_dfa_accepts.get("lf_0a") is True
+                    else "CONTRADICTED"
+                    if result.causal.ws_dfa_accepts.get("lf_0a") is False
+                    else "UNAVAILABLE"
+                ),
+                detail=result.causal.ws_grammar_definition_verbatim,
+            )
+        )
+        answers.append(
+            EvidenceItem(
+                claim="fixed-k hypothesis independently tested",
+                classification=result.causal.fixed_k_status,
+                detail=result.causal.fixed_k_detail,
+            )
+        )
 
     # 1. Witness
     canon = next(
@@ -50,7 +99,8 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
         )
         if divergence is None:
             divergence = "grammar/witness problem"
-        conclusion = "grammar_witness_problem"
+        if causal_status != "conclusive":
+            conclusion = "grammar_witness_problem"
 
     # 2. Trace candidate decode
     for tc in result.tokenizer_candidates:
@@ -84,7 +134,9 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
             )
             if divergence is None:
                 divergence = "tokenizer decode mismatch"
-            if conclusion == "unresolved_internal_evidence_unavailable":
+            if causal_status != "conclusive" and conclusion == (
+                "unresolved_internal_evidence_unavailable"
+            ):
                 conclusion = "tokenizer_decode_mismatch"
 
     # 3. ByteTokenizer
@@ -98,7 +150,8 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
         )
         if bc.equivalence_status == "CONTRADICTED" and divergence is None:
             divergence = "ByteTokenizer conversion mismatch"
-            conclusion = "byte_tokenizer_conversion_mismatch"
+            if causal_status != "conclusive":
+                conclusion = "byte_tokenizer_conversion_mismatch"
 
     # 4–7 Mask / accept sequences
     ma = result.mask_attribution
@@ -124,7 +177,8 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
         )
         if not ma.attribution_reliable and divergence is None:
             divergence = "mask attribution unreliable vs runtime union"
-            conclusion = "integration_instrumentation_problem"
+            if causal_status != "conclusive":
+                conclusion = "integration_instrumentation_problem"
 
         for tid, admitted in ma.runtime_mask_bits.items():
             answers.append(
@@ -134,10 +188,15 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
                     detail=f"admitted={admitted}",
                 )
             )
-            if admitted and conclusion == "unresolved_internal_evidence_unavailable":
+            if (
+                causal_status != "conclusive"
+                and admitted
+                and conclusion == "unresolved_internal_evidence_unavailable"
+            ):
                 conclusion = "candidate_admitted_by_mask"
             if (
-                not admitted
+                causal_status != "conclusive"
+                and not admitted
                 and canon is not None
                 and canon.canonical_lark_parse_success
                 and conclusion
@@ -146,7 +205,6 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
                     "candidate_admitted_by_mask",
                 )
             ):
-                # Grammar allows a completion through this boundary but mask rejects.
                 conclusion = "candidate_rejected_by_verified_mask"
                 if divergence is None:
                     divergence = (
@@ -155,7 +213,6 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
                     )
 
         if ma.attribution_reliable:
-            # Which sequences admit each candidate
             for seq in ma.per_sequence:
                 for c in seq.candidates:
                     if c.contributed_bit:
@@ -179,7 +236,6 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
         )
         uncertainty.append("DFA byte-transition trace unavailable in 0.4.16 public API")
 
-    # 8. Cache comparison is external — note if only one mode present
     answers.append(
         EvidenceItem(
             claim="fresh cache differs from existing cache",
@@ -191,44 +247,60 @@ def build_root_cause(result: SyncodeMaskProbeResult) -> RootCauseReport:
         )
     )
 
-    # Never conclude "SynCode bug confirmed" from raw_argmax_blocked alone.
     uncertainty.append(
         "raw_argmax_blocked=True alone never proves a SynCode bug; "
         "this report requires verified divergence evidence"
     )
-    if result.report_status in ("failed", "incomplete"):
+
+    # Execution failure must not be confused with causal unresolved.
+    exec_status = result.execution_status or (
+        "failed"
+        if result.report_status == "failed"
+        else "complete"
+        if result.report_status == "complete"
+        else None
+    )
+    if exec_status == "failed":
         conclusion = "unresolved_internal_evidence_unavailable"
+        causal_status = "unresolved"
+        unresolved.append(
+            f"execution_status=failed failure_stage={result.failure_stage}"
+        )
         uncertainty.append(
-            f"report_status={result.report_status}; no SynCode-bug conclusion permitted"
+            f"execution_status=failed; no SynCode-bug conclusion permitted "
+            f"(failure_stage={result.failure_stage})"
         )
 
-    # INFERENCE classifications must not be upgraded to VERIFIED here.
     for item in answers:
         if item.classification == "INFERENCE":
-            uncertainty.append(
-                f"inference retained (not verified): {item.claim}"
-            )
+            uncertainty.append(f"inference retained (not verified): {item.claim}")
+
+    if causal_status != "conclusive":
+        unresolved.extend([u for u in uncertainty if u not in unresolved])
 
     return RootCauseReport(
         answers=answers,
         first_verified_divergence=divergence,
         supported_conclusion=conclusion,
         remaining_uncertainty=uncertainty,
+        unresolved_reasons=unresolved,
+        causal_conclusion_status=causal_status,  # type: ignore[arg-type]
     )
 
 
 def render_markdown_report(result: SyncodeMaskProbeResult) -> str:
     rc = result.root_cause or build_root_cause(result)
+    exec_status = result.execution_status or result.report_status
     lines = [
         f"# SynCode mask probe — {result.case.case_id}",
         "",
         f"- Schema: `{result.schema_version}`",
-        f"- Report status: `{result.report_status}`"
-        + (
-            f" (failure_stage=`{result.failure_stage}`)"
-            if result.failure_stage
-            else ""
-        ),
+        f"- execution_status: `{exec_status}`",
+        f"- report_status: `{result.report_status}` "
+        f"(legacy mirror of execution_status when finished)",
+        f"- causal_conclusion_status: `{result.causal_conclusion_status}`",
+        f"- supported_conclusion: `{result.supported_conclusion}`",
+        f"- failure_stage: `{result.failure_stage}`",
         f"- SynCode: `{result.provenance.syncode_version}` "
         f"(override={result.provenance.syncode_version_override_used})",
         f"- Grammar SHA-256: `{result.provenance.grammar_sha256}`",
@@ -250,11 +322,15 @@ def render_markdown_report(result: SyncodeMaskProbeResult) -> str:
     lines += [
         "",
         f"**First verified divergence:** {rc.first_verified_divergence or 'none'}",
-        f"**Supported conclusion:** `{rc.supported_conclusion}`",
+        f"**Supported conclusion:** `{result.supported_conclusion}`",
+        f"**Causal conclusion status:** `{result.causal_conclusion_status}`",
         "",
-        "### Remaining uncertainty",
+        "### Unresolved reasons",
         "",
     ]
+    for u in result.unresolved_reasons or rc.unresolved_reasons:
+        lines.append(f"- {u}")
+    lines += ["", "### Remaining uncertainty", ""]
     for u in rc.remaining_uncertainty:
         lines.append(f"- {u}")
     if result.errors:
